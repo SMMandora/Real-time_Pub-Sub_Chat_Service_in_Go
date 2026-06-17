@@ -1166,6 +1166,10 @@ func TestEndToEndFanout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Wait until B's join is processed (B receives its own system "join"
+	// frame) so A's broadcast cannot race ahead of B becoming a member.
+	readUntil(t, bctx, b, TypeSystem)
+
 	if err := wsjson.Write(actx, a, Frame{Type: TypeSend, Room: "general", Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
