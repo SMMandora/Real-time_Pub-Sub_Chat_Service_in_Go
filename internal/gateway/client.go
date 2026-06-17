@@ -16,7 +16,7 @@ import (
 type roomRegistry interface {
 	Join(roomID string, m member)
 	Leave(roomID string, m member)
-	Broadcast(roomID string, f Frame)
+	Publish(roomID string, f Frame) error
 }
 
 // Client is one WebSocket connection. enqueue feeds the bounded send channel
@@ -100,7 +100,9 @@ func (c *Client) handleFrame(f Frame) {
 			c.enqueue(errorFrame(fmt.Sprintf("not joined to room %q", f.Room)))
 			return
 		}
-		c.hub.Broadcast(f.Room, messageFrame(f.Room, c.id, f.Text, nowMillis()))
+		if err := c.hub.Publish(f.Room, messageFrame(f.Room, c.id, f.Text, nowMillis())); err != nil {
+			c.enqueue(errorFrame("failed to send message"))
+		}
 	default:
 		c.enqueue(errorFrame("unknown frame type"))
 	}

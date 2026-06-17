@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,7 +15,9 @@ import (
 )
 
 func newTestServer() *Server {
-	return NewServer(NewHub(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	bus := newFakeBus()
+	hub := NewHub(bus)
+	return NewServer(hub, bus, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 }
 
 func TestHealthzAlwaysOK(t *testing.T) {
@@ -69,7 +72,7 @@ func readUntil(t *testing.T, ctx context.Context, conn *websocket.Conn, typ stri
 }
 
 func TestEndToEndFanout(t *testing.T) {
-	srv := NewServer(NewHub(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := newTestServer()
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
 	wsURL := "ws" + ts.URL[len("http"):] + "/ws"
@@ -101,7 +104,7 @@ func TestEndToEndFanout(t *testing.T) {
 }
 
 func TestMalformedJSONReturnsError(t *testing.T) {
-	srv := NewServer(NewHub(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := newTestServer()
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
 	wsURL := "ws" + ts.URL[len("http"):] + "/ws"
@@ -115,5 +118,18 @@ func TestMalformedJSONReturnsError(t *testing.T) {
 	f := readUntil(t, ctx, c, TypeError)
 	if f.Message == "" {
 		t.Fatalf("expected non-empty error message, got %+v", f)
+	}
+}
+
+func TestReadyzFailsWhenRedisDown(t *testing.T) {
+	bus := newFakeBus()
+	bus.pingErr = errors.New("redis down")
+	hub := NewHub(bus)
+	srv := NewServer(hub, bus, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz with redis down = %d, want 503", rec.Code)
 	}
 }

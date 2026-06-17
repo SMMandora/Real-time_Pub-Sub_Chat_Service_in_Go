@@ -1,20 +1,23 @@
 package gateway
 
 import (
+	"errors"
 	"testing"
 )
 
 // fakeRegistry records hub calls so handleFrame can be tested in isolation.
 type fakeRegistry struct {
-	joined    []string
-	left      []string
-	broadcast []Frame
+	joined     []string
+	left       []string
+	published  []Frame
+	publishErr error
 }
 
 func (f *fakeRegistry) Join(roomID string, m member)  { f.joined = append(f.joined, roomID) }
 func (f *fakeRegistry) Leave(roomID string, m member) { f.left = append(f.left, roomID) }
-func (f *fakeRegistry) Broadcast(roomID string, fr Frame) {
-	f.broadcast = append(f.broadcast, fr)
+func (f *fakeRegistry) Publish(roomID string, fr Frame) error {
+	f.published = append(f.published, fr)
+	return f.publishErr
 }
 
 func drain(c *Client) []Frame {
@@ -42,8 +45,8 @@ func TestHandleSendRequiresJoin(t *testing.T) {
 
 	c.handleFrame(Frame{Type: TypeSend, Room: "general", Text: "hi"})
 
-	if len(reg.broadcast) != 0 {
-		t.Fatalf("send before join should not broadcast, got %+v", reg.broadcast)
+	if len(reg.published) != 0 {
+		t.Fatalf("send before join should not broadcast, got %+v", reg.published)
 	}
 	out := drain(c)
 	if len(out) != 1 || out[0].Type != TypeError {
@@ -61,10 +64,10 @@ func TestHandleJoinThenSend(t *testing.T) {
 	if len(reg.joined) != 1 || reg.joined[0] != "general" {
 		t.Fatalf("expected join general, got %+v", reg.joined)
 	}
-	if len(reg.broadcast) != 1 {
-		t.Fatalf("expected one broadcast, got %+v", reg.broadcast)
+	if len(reg.published) != 1 {
+		t.Fatalf("expected one broadcast, got %+v", reg.published)
 	}
-	got := reg.broadcast[0]
+	got := reg.published[0]
 	if got.Type != TypeMessage || got.From != c.ID() || got.Text != "hi" || got.TS == 0 {
 		t.Fatalf("unexpected broadcast frame: %+v", got)
 	}
@@ -113,5 +116,16 @@ func TestHandleLeaveUnjoinedIsNoop(t *testing.T) {
 	c.handleFrame(Frame{Type: TypeLeave, Room: "ghost"})
 	if len(reg.left) != 0 {
 		t.Fatalf("leave of unjoined room should not call hub.Leave, got %+v", reg.left)
+	}
+}
+
+func TestHandleSendPublishErrorReturnsErrorFrame(t *testing.T) {
+	reg := &fakeRegistry{publishErr: errors.New("boom")}
+	c := newClient(reg, func() {})
+	c.handleFrame(Frame{Type: TypeJoin, Room: "general"})
+	c.handleFrame(Frame{Type: TypeSend, Room: "general", Text: "hi"})
+	out := drain(c)
+	if len(out) != 1 || out[0].Type != TypeError {
+		t.Fatalf("expected error frame on publish failure, got %+v", out)
 	}
 }

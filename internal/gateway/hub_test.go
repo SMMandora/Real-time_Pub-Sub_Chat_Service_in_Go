@@ -2,44 +2,79 @@ package gateway
 
 import "testing"
 
-func TestHubLazyCreateAndReap(t *testing.T) {
-	h := NewHub()
+func TestHubLazyCreateAndReapAndSubscribe(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
 	a := &fakeMember{id: "a"}
 
 	h.Join("general", a)
 	if h.roomCount() != 1 {
 		t.Fatalf("expected 1 room, got %d", h.roomCount())
 	}
+	if !bus.isSubscribed(roomChannel("general")) {
+		t.Fatalf("expected subscription to %q after join", roomChannel("general"))
+	}
 
 	h.Leave("general", a)
 	if h.roomCount() != 0 {
 		t.Fatalf("expected room reaped, got %d", h.roomCount())
 	}
+	if bus.isSubscribed(roomChannel("general")) {
+		t.Fatalf("expected unsubscribe from %q after reap", roomChannel("general"))
+	}
 }
 
-func TestHubBroadcastReachesMembers(t *testing.T) {
-	h := NewHub()
+func TestHubSubscribesOncePerRoom(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
+	h.Join("general", &fakeMember{id: "a"})
+	h.Join("general", &fakeMember{id: "b"})
+	if bus.subscribeCount() != 1 {
+		t.Fatalf("expected 1 subscribe for two joiners of same room, got %d", bus.subscribeCount())
+	}
+}
+
+func TestHubPublishGoesToBus(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
+	h.Join("general", &fakeMember{id: "a"})
+
+	if err := h.Publish("general", messageFrame("general", "a", "hi", 1)); err != nil {
+		t.Fatal(err)
+	}
+	if bus.publishCount() != 1 {
+		t.Fatalf("expected 1 publish, got %d", bus.publishCount())
+	}
+}
+
+func TestHubRoundTripReachesMembers(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
 	a := &fakeMember{id: "a"}
 	b := &fakeMember{id: "b"}
 	h.Join("general", a)
 	h.Join("general", b)
 
-	h.Broadcast("general", messageFrame("general", "a", "hi", 1))
-
+	// Publish loops back through the subscribed bus to local members.
+	if err := h.Publish("general", messageFrame("general", "a", "hi", 1)); err != nil {
+		t.Fatal(err)
+	}
 	waitFor(t, func() bool { return hasText(a.frames(), "hi") && hasText(b.frames(), "hi") })
 }
 
 func TestHubLeaveUnknownRoomIsNoop(t *testing.T) {
-	h := NewHub()
+	bus := newFakeBus()
+	h := NewHub(bus)
 	a := &fakeMember{id: "a"}
-	h.Leave("ghost", a) // must not panic
+	h.Leave("ghost", a)
 	if h.roomCount() != 0 {
 		t.Fatalf("expected 0 rooms, got %d", h.roomCount())
 	}
 }
 
 func TestHubCloseAllClosesRegisteredClients(t *testing.T) {
-	h := NewHub()
+	bus := newFakeBus()
+	h := NewHub(bus)
 	a := &fakeMember{id: "a"}
 	b := &fakeMember{id: "b"}
 	h.Register(a)

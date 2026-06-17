@@ -24,16 +24,29 @@ func main() {
 	if webDir == "" {
 		webDir = "web"
 	}
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
 
-	hub := gateway.NewHub()
-	srv := gateway.NewServer(hub, log, webDir)
+	bus := gateway.NewRedisBus(redisAddr)
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := bus.Ping(pingCtx); err != nil {
+		pingCancel()
+		log.Error("cannot reach redis", "addr", redisAddr, "err", err)
+		os.Exit(1)
+	}
+	pingCancel()
+
+	hub := gateway.NewHub(bus)
+	srv := gateway.NewServer(hub, bus, log, webDir)
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Info("gateway listening", "addr", addr)
+		log.Info("gateway listening", "addr", addr, "redis", redisAddr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("server error", "err", err)
 			stop()
@@ -43,7 +56,6 @@ func main() {
 	<-ctx.Done()
 	log.Info("shutdown initiated")
 
-	// Stop routing new traffic, then drain.
 	srv.SetDraining(true)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -53,5 +65,6 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Error("graceful shutdown failed", "err", err)
 	}
+	_ = bus.Close()
 	log.Info("shutdown complete")
 }

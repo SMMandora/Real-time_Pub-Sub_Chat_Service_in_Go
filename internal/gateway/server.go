@@ -5,20 +5,27 @@ import (
 	"log/slog"
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"nhooyr.io/websocket"
 )
 
+// pinger reports backing-store health; the Redis bus implements it.
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
 type Server struct {
 	hub      *Hub
+	bus      pinger
 	log      *slog.Logger
 	webDir   string
 	draining atomic.Bool
 }
 
-func NewServer(hub *Hub, log *slog.Logger, webDir string) *Server {
-	return &Server{hub: hub, log: log, webDir: webDir}
+func NewServer(hub *Hub, bus pinger, log *slog.Logger, webDir string) *Server {
+	return &Server{hub: hub, bus: bus, log: log, webDir: webDir}
 }
 
 func (s *Server) Router() http.Handler {
@@ -37,9 +44,15 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
 		http.Error(w, "draining", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.bus.Ping(ctx); err != nil {
+		http.Error(w, "redis unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
