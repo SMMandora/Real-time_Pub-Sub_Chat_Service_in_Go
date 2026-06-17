@@ -24,8 +24,19 @@ CREATE TABLE IF NOT EXISTS messages (
 	PRIMARY KEY (room_id, id)
 );`
 
+const createRoomsTable = `
+CREATE TABLE IF NOT EXISTS rooms (
+	id           TEXT PRIMARY KEY,
+	visibility   TEXT NOT NULL,
+	invite_token TEXT,
+	created_ms   BIGINT NOT NULL
+);`
+
 func (s *PgxStore) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, createMessagesTable)
+	if _, err := s.pool.Exec(ctx, createMessagesTable); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, createRoomsTable)
 	return err
 }
 
