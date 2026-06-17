@@ -131,6 +131,7 @@ func main() {
 	webDir := getenv("WEB_DIR", "web")
 	redisAddr := getenv("REDIS_ADDR", "localhost:6379")
 	dbURL := getenv("DATABASE_URL", "postgres://chat:chat@localhost:5432/chat?sslmode=disable")
+	promURL := getenv("PROMETHEUS_URL", "http://localhost:9090")
 
 	bus := gateway.NewRedisBus(redisAddr)
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -168,6 +169,7 @@ func main() {
 	srv := gateway.NewServer(gateway.ServerConfig{
 		Hub: hub, Bus: bus, History: hist, Presence: presence, Limiter: limiter,
 		Rooms: rooms, Members: memberAdapter{store: store}, Log: log, WebDir: webDir,
+		PrometheusURL: promURL,
 	})
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 

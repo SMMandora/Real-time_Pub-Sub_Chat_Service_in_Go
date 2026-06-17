@@ -437,6 +437,44 @@ func TestListRoomsIncludesMetadataAndOnlineCount(t *testing.T) {
 	}
 }
 
+func TestMetricsQueryProxiesToPrometheus(t *testing.T) {
+	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/query" {
+			t.Errorf("upstream path = %s, want /api/v1/query", r.URL.Path)
+		}
+		if r.URL.Query().Get("query") != "up" {
+			t.Errorf("query not forwarded: %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
+	}))
+	defer prom.Close()
+
+	bus := newFakeBus()
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{}, Presence: newFakePresenceStore(),
+		Limiter: &fakeRateLimiter{allow: true}, Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web", PrometheusURL: prom.URL,
+	})
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/metrics/query?query=up", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxy = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "success") {
+		t.Fatalf("expected upstream body, got %s", rec.Body.String())
+	}
+}
+
+func TestMetricsQueryUnconfigured503(t *testing.T) {
+	srv := newTestServer() // no PrometheusURL
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/metrics/query?query=up", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured proxy = %d, want 503", rec.Code)
+	}
+}
+
 func TestRoomMembersStatus(t *testing.T) {
 	bus := newFakeBus()
 	ps := newFakePresenceStore()

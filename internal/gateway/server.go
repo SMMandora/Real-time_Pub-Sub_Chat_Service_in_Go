@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -33,20 +35,22 @@ type Server struct {
 	members   MemberStore
 	log       *slog.Logger
 	webDir    string
+	promURL   string
 	clientCfg clientConfig
 	draining  atomic.Bool
 }
 
 type ServerConfig struct {
-	Hub      *Hub
-	Bus      pinger
-	History  history
-	Presence PresenceStore
-	Limiter  RateLimiter
-	Rooms    RoomStore
-	Members  MemberStore
-	Log      *slog.Logger
-	WebDir   string
+	Hub           *Hub
+	Bus           pinger
+	History       history
+	Presence      PresenceStore
+	Limiter       RateLimiter
+	Rooms         RoomStore
+	Members       MemberStore
+	Log           *slog.Logger
+	WebDir        string
+	PrometheusURL string
 }
 
 func NewServer(cfg ServerConfig) *Server {
@@ -58,6 +62,7 @@ func NewServer(cfg ServerConfig) *Server {
 		members: cfg.Members,
 		log:     cfg.Log,
 		webDir:  cfg.WebDir,
+		promURL: cfg.PrometheusURL,
 		clientCfg: clientConfig{
 			hub:      cfg.Hub,
 			history:  cfg.History,
@@ -81,6 +86,8 @@ func (s *Server) Router() http.Handler {
 	r.Get("/api/rooms/{id}", s.handleGetRoom)
 	r.Get("/api/rooms/{room}/members", s.handleRoomMembers)
 	r.Delete("/api/rooms/{id}", s.handleDeleteRoom)
+	r.Get("/api/metrics/query", s.handleMetricsQuery)
+	r.Get("/api/metrics/query_range", s.handleMetricsQueryRange)
 	r.Handle("/metrics", metricsHandler())
 	r.Handle("/*", http.FileServer(http.Dir(s.webDir)))
 	return r
@@ -300,6 +307,41 @@ func (s *Server) handleRoomMembers(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(struct {
 		Members []memberView `json:"members"`
 	}{Members: out})
+}
+
+func (s *Server) handleMetricsQuery(w http.ResponseWriter, r *http.Request) {
+	s.proxyPrometheus(w, r, "/api/v1/query")
+}
+
+func (s *Server) handleMetricsQueryRange(w http.ResponseWriter, r *http.Request) {
+	s.proxyPrometheus(w, r, "/api/v1/query_range")
+}
+
+func (s *Server) proxyPrometheus(w http.ResponseWriter, r *http.Request, path string) {
+	if s.promURL == "" {
+		http.Error(w, "metrics not configured", http.StatusServiceUnavailable)
+		return
+	}
+	target := strings.TrimRight(s.promURL, "/") + path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		http.Error(w, "bad query", http.StatusBadRequest)
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "prometheus unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request) {
