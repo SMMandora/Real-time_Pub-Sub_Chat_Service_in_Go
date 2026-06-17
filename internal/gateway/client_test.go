@@ -106,3 +106,12 @@ func TestLeaveAllLeavesEveryJoinedRoom(t *testing.T) {
 		t.Fatalf("expected to leave 2 rooms, got %+v", reg.left)
 	}
 }
+
+func TestHandleLeaveUnjoinedIsNoop(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newClient(reg, func() {})
+	c.handleFrame(Frame{Type: TypeLeave, Room: "ghost"})
+	if len(reg.left) != 0 {
+		t.Fatalf("leave of unjoined room should not call hub.Leave, got %+v", reg.left)
+	}
+}

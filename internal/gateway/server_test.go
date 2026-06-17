@@ -99,3 +99,21 @@ func TestEndToEndFanout(t *testing.T) {
 		t.Fatalf("unexpected message frame: %+v", msg)
 	}
 }
+
+func TestMalformedJSONReturnsError(t *testing.T) {
+	srv := NewServer(NewHub(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	ts := httptest.NewServer(srv.Router())
+	defer ts.Close()
+	wsURL := "ws" + ts.URL[len("http"):] + "/ws"
+
+	c, ctx := dialWS(t, wsURL)
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	if err := c.Write(ctx, websocket.MessageText, []byte("{not json")); err != nil {
+		t.Fatal(err)
+	}
+	f := readUntil(t, ctx, c, TypeError)
+	if f.Message == "" {
+		t.Fatalf("expected non-empty error message, got %+v", f)
+	}
+}

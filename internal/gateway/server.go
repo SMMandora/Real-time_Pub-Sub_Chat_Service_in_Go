@@ -64,10 +64,17 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		client.leaveAll()
 		s.hub.Unregister(client)
-		_ = conn.Close(websocket.StatusGoingAway, "bye")
+		reason := client.closeReason
+		if reason == "" {
+			reason = "bye"
+		}
+		_ = conn.Close(websocket.StatusGoingAway, reason)
 		s.log.Info("client disconnected", "id", client.ID())
 	}()
 
 	go client.writePump(ctx, conn)
+	// readPump runs in the handler goroutine (not backgrounded) so that
+	// http.Server.Shutdown blocks on this handler until the pump exits.
+	// That is what drains in-flight clients during graceful shutdown.
 	client.readPump(ctx, conn)
 }

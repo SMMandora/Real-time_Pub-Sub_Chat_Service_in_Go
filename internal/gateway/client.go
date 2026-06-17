@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -21,11 +22,12 @@ type roomRegistry interface {
 // Client is one WebSocket connection. enqueue feeds the bounded send channel
 // that writePump drains; overflow drops the client by cancelling its context.
 type Client struct {
-	id     string
-	hub    roomRegistry
-	send   chan Frame
-	cancel context.CancelFunc
-	once   sync.Once
+	id          string
+	hub         roomRegistry
+	send        chan Frame
+	cancel      context.CancelFunc
+	once        sync.Once
+	closeReason string
 
 	mu     sync.Mutex
 	joined map[string]bool
@@ -61,8 +63,11 @@ func (c *Client) enqueue(f Frame) {
 	}
 }
 
-func (c *Client) close(string) {
-	c.once.Do(c.cancel)
+func (c *Client) close(reason string) {
+	c.once.Do(func() {
+		c.closeReason = reason
+		c.cancel()
+	})
 }
 
 func (c *Client) handleFrame(f Frame) {
@@ -92,7 +97,7 @@ func (c *Client) handleFrame(f Frame) {
 		joined := c.joined[f.Room]
 		c.mu.Unlock()
 		if !joined {
-			c.enqueue(errorFrame("not joined to room"))
+			c.enqueue(errorFrame(fmt.Sprintf("not joined to room %q", f.Room)))
 			return
 		}
 		c.hub.Broadcast(f.Room, messageFrame(f.Room, c.id, f.Text, nowMillis()))
