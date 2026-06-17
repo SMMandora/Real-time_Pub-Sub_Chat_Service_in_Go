@@ -30,8 +30,8 @@ export function TrendChart({ title, data, unit = '' }: Props) {
               interval="preserveStartEnd"
             />
             <Tooltip
-              formatter={(val: number) => [`${val.toFixed(2)}${unit}`, '']}
-              labelFormatter={(l: number) => formatTime(l)}
+              formatter={(val) => [`${Number(val).toFixed(2)}${unit}`, '']}
+              labelFormatter={(l) => formatTime(Number(l))}
               contentStyle={{
                 background: 'var(--bg-modal)',
                 border: '1px solid var(--border)',
