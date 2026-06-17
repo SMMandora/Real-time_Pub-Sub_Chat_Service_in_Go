@@ -6,22 +6,24 @@ other via Redis pub/sub.
 
 ## Run
 
-Slice 2 requires Redis. Start it with Docker:
+Slice 2+ needs Redis; slice 3a adds Postgres. Start both with Docker:
 
 ```bash
-docker compose up -d        # starts Redis 7 on localhost:6379
-go run ./cmd/gateway
+docker compose up -d        # Redis 7 on :6379, Postgres 16 on :5432
+go run ./cmd/gateway        # WebSocket gateway on :8080
+go run ./cmd/worker         # persistence worker on :8090
 ```
 
 Open http://localhost:8080/ in two browser tabs, join the same room, and chat.
-Run a second gateway on another port (`ADDR=:8081 go run ./cmd/gateway`) and the
-two replicas fan out to each other through Redis.
+Messages fan out in real time and the worker persists them to Postgres.
 
 Environment variables:
 
-- `ADDR` — listen address (default `:8080`)
+- `ADDR` — gateway listen address (default `:8080`)
 - `WEB_DIR` — directory served at `/` (default `web`)
 - `REDIS_ADDR` — Redis address (default `localhost:6379`)
+- `DATABASE_URL` — Postgres DSN (default `postgres://chat:chat@localhost:5432/chat?sslmode=disable`)
+- `WORKER_ADDR` — worker health address (default `:8090`)
 
 ## Endpoints
 
@@ -39,5 +41,5 @@ go test ./... -race
 
 ## Roadmap
 
-Slice 1 (done) → Redis fan-out (done) → Postgres history → presence/typing →
-rate limiting/auth → observability → K8s + load test.
+Slice 1 (done) → Redis fan-out (done) → Postgres persistence (done) →
+history API → presence/typing → rate limiting/auth → observability → K8s + load test.
