@@ -35,7 +35,7 @@ Environment variables:
   `before` returns messages with id < before. Joining a room also replays the
   last 100 messages (or messages after the `id` sent on the JOIN frame).
 - `GET /healthz` — liveness (always 200).
-- `GET /readyz` — readiness (503 while shutting down or when Redis is unreachable).
+- `GET /readyz` — readiness (503 while shutting down or when Redis or Postgres is unreachable).
 
 ## Test
 

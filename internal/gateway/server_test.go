@@ -15,6 +15,26 @@ import (
 	"nhooyr.io/websocket/wsjson"
 )
 
+func TestParseLimitClampsAndDefaults(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int
+	}{
+		{"", 100},
+		{"abc", 100},
+		{"0", 100},
+		{"-5", 100},
+		{"50", 50},
+		{"200", 200},
+		{"500", 200},
+	}
+	for _, tt := range tests {
+		if got := parseLimit(tt.in); got != tt.want {
+			t.Errorf("parseLimit(%q) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+}
+
 func newTestServer() *Server {
 	bus := newFakeBus()
 	hub := NewHub(bus)
