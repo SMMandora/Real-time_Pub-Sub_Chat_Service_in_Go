@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -17,7 +18,7 @@ import (
 func newTestServer() *Server {
 	bus := newFakeBus()
 	hub := NewHub(bus)
-	return NewServer(hub, bus, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	return NewServer(hub, bus, &fakeHistory{}, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 }
 
 func TestHealthzAlwaysOK(t *testing.T) {
@@ -125,11 +126,74 @@ func TestReadyzFailsWhenRedisDown(t *testing.T) {
 	bus := newFakeBus()
 	bus.pingErr = errors.New("redis down")
 	hub := NewHub(bus)
-	srv := NewServer(hub, bus, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(hub, bus, &fakeHistory{}, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("readyz with redis down = %d, want 503", rec.Code)
+	}
+}
+
+func TestReadyzFailsWhenPostgresDown(t *testing.T) {
+	bus := newFakeBus()
+	hist := &fakeHistory{pingErr: errors.New("pg down")}
+	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz with postgres down = %d, want 503", rec.Code)
+	}
+}
+
+func TestHistoryEndpointReturnsMessages(t *testing.T) {
+	bus := newFakeBus()
+	hist := &fakeHistory{recent: []StoredMessage{
+		{ID: 1, From: "u", Text: "a", TS: 1},
+		{ID: 2, From: "u", Text: "b", TS: 2},
+	}}
+	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history = %d, want 200", rec.Code)
+	}
+	var resp struct {
+		Messages []StoredMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Messages) != 2 || resp.Messages[0].ID != 1 || resp.Messages[1].ID != 2 {
+		t.Fatalf("unexpected messages: %+v", resp.Messages)
+	}
+}
+
+func TestHistoryEndpointBeforeParam(t *testing.T) {
+	bus := newFakeBus()
+	hist := &fakeHistory{before: []StoredMessage{{ID: 5, From: "u", Text: "e", TS: 5}}}
+	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages?before=10", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history?before = %d, want 200", rec.Code)
+	}
+	if hist.beforeCalledWith() != 10 {
+		t.Fatalf("expected Before called with 10, got %d", hist.beforeCalledWith())
+	}
+}
+
+func TestHistoryEndpointStoreErrorReturns503(t *testing.T) {
+	bus := newFakeBus()
+	hist := &fakeHistory{err: errors.New("down")}
+	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("history with store error = %d, want 503", rec.Code)
 	}
 }

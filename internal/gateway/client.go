@@ -5,11 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"nhooyr.io/websocket"
 )
+
+// replayLimit caps how many history messages are replayed to a joining client.
+const replayLimit = 100
 
 // roomRegistry is the subset of the hub a client depends on, so handleFrame can
 // be tested with a fake.
@@ -23,7 +27,10 @@ type roomRegistry interface {
 // that writePump drains; overflow drops the client by cancelling its context.
 type Client struct {
 	id          string
+	ctx         context.Context
 	hub         roomRegistry
+	history     history
+	log         *slog.Logger
 	send        chan Frame
 	cancel      context.CancelFunc
 	once        sync.Once
@@ -43,13 +50,16 @@ func nowMillis() int64 {
 	return time.Now().UnixMilli()
 }
 
-func newClient(hub roomRegistry, cancel context.CancelFunc) *Client {
+func newClient(ctx context.Context, hub roomRegistry, hist history, log *slog.Logger, cancel context.CancelFunc) *Client {
 	return &Client{
-		id:     newID(),
-		hub:    hub,
-		send:   make(chan Frame, 16),
-		cancel: cancel,
-		joined: make(map[string]bool),
+		id:      newID(),
+		ctx:     ctx,
+		hub:     hub,
+		history: hist,
+		log:     log,
+		send:    make(chan Frame, 16),
+		cancel:  cancel,
+		joined:  make(map[string]bool),
 	}
 }
 
@@ -83,6 +93,10 @@ func (c *Client) handleFrame(f Frame) {
 		c.mu.Unlock()
 		if !already {
 			c.hub.Join(f.Room, c)
+			// Replay history to this client only. Async so readPump is not
+			// blocked on the DB; the client deduplicates by id, so replayed
+			// and live messages may overlap harmlessly.
+			go c.replay(f.Room, f.ID)
 		}
 	case TypeLeave:
 		c.mu.Lock()
@@ -105,6 +119,28 @@ func (c *Client) handleFrame(f Frame) {
 		}
 	default:
 		c.enqueue(errorFrame("unknown frame type"))
+	}
+}
+
+// replay fetches recent history (or messages after sinceID) and enqueues them
+// to this client as message frames. Best-effort: on error it logs and returns.
+func (c *Client) replay(room string, sinceID int64) {
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	var msgs []StoredMessage
+	var err error
+	if sinceID > 0 {
+		msgs, err = c.history.Since(ctx, room, sinceID, replayLimit)
+	} else {
+		msgs, err = c.history.Recent(ctx, room, replayLimit)
+	}
+	if err != nil {
+		c.log.Warn("history replay failed", "room", room, "err", err)
+		return
+	}
+	for _, m := range msgs {
+		c.enqueue(Frame{Type: TypeMessage, Room: room, ID: m.ID, From: m.From, Text: m.Text, TS: m.TS})
 	}
 }
 
