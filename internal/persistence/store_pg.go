@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS rooms (
 	created_ms   BIGINT NOT NULL
 );`
 
+const createRoomMembersTable = `
+CREATE TABLE IF NOT EXISTS room_members (
+	room_id      TEXT   NOT NULL,
+	username     TEXT   NOT NULL,
+	last_seen_ms BIGINT NOT NULL,
+	PRIMARY KEY (room_id, username)
+);`
+
 func (s *PgxStore) Migrate(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, createMessagesTable); err != nil {
 		return err
@@ -39,9 +47,12 @@ func (s *PgxStore) Migrate(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, createRoomsTable); err != nil {
 		return err
 	}
-	_, err := s.pool.Exec(ctx,
+	if _, err := s.pool.Exec(ctx,
 		`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
-		 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';`)
+		 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';`); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, createRoomMembersTable)
 	return err
 }
 

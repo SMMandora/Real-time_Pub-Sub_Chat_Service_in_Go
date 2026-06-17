@@ -85,3 +85,35 @@ func (s *PgxStore) DeleteRoom(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM rooms WHERE id=$1`, id)
 	return err
 }
+
+type MemberRecord struct {
+	Username   string
+	LastSeenMs int64
+}
+
+func (s *PgxStore) TouchMember(ctx context.Context, room, username string, lastSeenMs int64) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO room_members (room_id, username, last_seen_ms)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (room_id, username) DO UPDATE SET last_seen_ms = EXCLUDED.last_seen_ms`,
+		room, username, lastSeenMs)
+	return err
+}
+
+func (s *PgxStore) ListMembers(ctx context.Context, room string) ([]MemberRecord, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT username, last_seen_ms FROM room_members WHERE room_id=$1 ORDER BY username ASC`, room)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MemberRecord
+	for rows.Next() {
+		var m MemberRecord
+		if err := rows.Scan(&m.Username, &m.LastSeenMs); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
