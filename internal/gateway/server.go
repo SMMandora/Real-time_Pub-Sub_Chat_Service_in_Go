@@ -56,6 +56,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 	r.Get("/ws", s.handleWS)
 	r.Get("/api/rooms/{room}/messages", s.handleHistory)
+	r.Handle("/metrics", metricsHandler())
 	r.Handle("/*", http.FileServer(http.Dir(s.webDir)))
 	return r
 }
@@ -149,10 +150,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	client := newClient(ctx, username, s.clientCfg, cancel)
 	s.hub.Register(client)
+	ActiveConnections.Inc()
 	s.log.Info("client connected", "id", client.ID(), "user", username)
 	go client.heartbeat()
 
 	defer func() {
+		ActiveConnections.Dec()
 		client.leaveAll()
 		s.hub.Unregister(client)
 		reason := client.closeReason

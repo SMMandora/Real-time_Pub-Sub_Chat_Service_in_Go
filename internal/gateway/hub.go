@@ -33,6 +33,9 @@ func (h *Hub) onBusMessage(channel string, payload []byte) {
 	if err != nil {
 		return
 	}
+	if f.Type == TypeMessage && f.TS > 0 {
+		FanoutLatencySeconds.Observe(float64(nowMillis()-f.TS) / 1000)
+	}
 	h.deliverLocal(roomFromChannel(channel), f)
 }
 
@@ -103,7 +106,11 @@ func (h *Hub) Publish(roomID string, f Frame) error {
 	if err != nil {
 		return err
 	}
-	return h.bus.Publish(context.Background(), roomChannel(roomID), payload)
+	if err := h.bus.Publish(context.Background(), roomChannel(roomID), payload); err != nil {
+		return err
+	}
+	MessagesTotal.Inc()
+	return nil
 }
 
 // PublishPresence broadcasts a presence or typing frame on the room's side
