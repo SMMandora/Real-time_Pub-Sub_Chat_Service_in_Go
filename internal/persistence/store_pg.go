@@ -56,3 +56,65 @@ func (s *PgxStore) InsertBatch(ctx context.Context, msgs []Message) error {
 	}
 	return tx.Commit(ctx)
 }
+
+func (s *PgxStore) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+
+const selectColumns = `SELECT room_id, id, sender, body, created_ms FROM messages`
+
+func (s *PgxStore) RecentMessages(ctx context.Context, room string, limit int) ([]Message, error) {
+	rows, err := s.pool.Query(ctx,
+		selectColumns+` WHERE room_id=$1 ORDER BY id DESC LIMIT $2`, room, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	msgs, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	reverse(msgs)
+	return msgs, nil
+}
+
+func (s *PgxStore) MessagesSince(ctx context.Context, room string, sinceID int64, limit int) ([]Message, error) {
+	rows, err := s.pool.Query(ctx,
+		selectColumns+` WHERE room_id=$1 AND id > $2 ORDER BY id ASC LIMIT $3`, room, sinceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
+func (s *PgxStore) MessagesBefore(ctx context.Context, room string, beforeID int64, limit int) ([]Message, error) {
+	rows, err := s.pool.Query(ctx,
+		selectColumns+` WHERE room_id=$1 AND id < $2 ORDER BY id DESC LIMIT $3`, room, beforeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	msgs, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	reverse(msgs)
+	return msgs, nil
+}
+
+func scanMessages(rows pgx.Rows) ([]Message, error) {
+	var out []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.RoomID, &m.ID, &m.Sender, &m.Body, &m.CreatedMS); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func reverse(msgs []Message) {
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+}

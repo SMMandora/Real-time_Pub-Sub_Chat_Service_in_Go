@@ -97,3 +97,63 @@ func TestPgxStoreInsertAndDedup(t *testing.T) {
 		t.Fatalf("expected ids [1 2], got %v", ids)
 	}
 }
+
+func seedMessages(t *testing.T, store *PgxStore) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	msgs := make([]Message, 0, 5)
+	for i := int64(1); i <= 5; i++ {
+		msgs = append(msgs, Message{RoomID: "x", ID: i, Sender: "u", Body: "m", CreatedMS: i})
+	}
+	if err := store.InsertBatch(ctx, msgs); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ids(msgs []Message) []int64 {
+	out := make([]int64, len(msgs))
+	for i, m := range msgs {
+		out[i] = m.ID
+	}
+	return out
+}
+
+func TestRecentMessagesReturnsNewestAscending(t *testing.T) {
+	store := NewPgxStore(startPostgres(t))
+	seedMessages(t, store)
+	got, err := store.RecentMessages(context.Background(), "x", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := ids(got); len(g) != 3 || g[0] != 3 || g[1] != 4 || g[2] != 5 {
+		t.Fatalf("expected newest-3 ascending [3 4 5], got %v", g)
+	}
+}
+
+func TestMessagesSinceFiltersAndOrders(t *testing.T) {
+	store := NewPgxStore(startPostgres(t))
+	seedMessages(t, store)
+	got, err := store.MessagesSince(context.Background(), "x", 2, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := ids(got); len(g) != 3 || g[0] != 3 || g[2] != 5 {
+		t.Fatalf("expected ids >2 ascending [3 4 5], got %v", g)
+	}
+}
+
+func TestMessagesBeforeReturnsOlderAscending(t *testing.T) {
+	store := NewPgxStore(startPostgres(t))
+	seedMessages(t, store)
+	got, err := store.MessagesBefore(context.Background(), "x", 4, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// id < 4 → {1,2,3}; newest 2 → {2,3}; ascending.
+	if g := ids(got); len(g) != 2 || g[0] != 2 || g[1] != 3 {
+		t.Fatalf("expected [2 3], got %v", g)
+	}
+}
