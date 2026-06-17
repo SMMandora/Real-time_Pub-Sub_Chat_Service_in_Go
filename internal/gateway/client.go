@@ -33,6 +33,7 @@ type clientConfig struct {
 	history  history
 	presence PresenceStore
 	limiter  RateLimiter
+	rooms    RoomStore
 	log      *slog.Logger
 }
 
@@ -46,6 +47,7 @@ type Client struct {
 	history     history
 	presence    PresenceStore
 	limiter     RateLimiter
+	rooms       RoomStore
 	hbInterval  time.Duration
 	log         *slog.Logger
 	send        chan Frame
@@ -76,6 +78,7 @@ func newClient(ctx context.Context, username string, cfg clientConfig, cancel co
 		history:    cfg.history,
 		presence:   cfg.presence,
 		limiter:    cfg.limiter,
+		rooms:      cfg.rooms,
 		hbInterval: heartbeatInterval,
 		log:        cfg.log,
 		send:       make(chan Frame, 16),
@@ -106,6 +109,9 @@ func (c *Client) handleFrame(f Frame) {
 	case TypeJoin:
 		if f.Room == "" {
 			c.enqueue(errorFrame("join requires a room"))
+			return
+		}
+		if !c.allowJoin(f.Room, f.Token) {
 			return
 		}
 		c.mu.Lock()
@@ -161,6 +167,26 @@ func (c *Client) handleFrame(f Frame) {
 	default:
 		c.enqueue(errorFrame("unknown frame type"))
 	}
+}
+
+// allowJoin gates a join on room visibility. Unregistered or public rooms are
+// allowed; a private room requires a matching token. A lookup error fails
+// closed (rejects), so a DB blip cannot leak a private room. It enqueues the
+// error frame on denial.
+func (c *Client) allowJoin(room, token string) bool {
+	ctx, cancel := context.WithTimeout(c.ctx, 2*time.Second)
+	defer cancel()
+	rec, found, err := c.rooms.Lookup(ctx, room)
+	if err != nil {
+		c.log.Warn("room lookup failed", "room", room, "err", err)
+		c.enqueue(errorFrame("room unavailable"))
+		return false
+	}
+	if found && rec.Visibility == "private" && rec.InviteToken != token {
+		c.enqueue(errorFrame("invalid invite token"))
+		return false
+	}
+	return true
 }
 
 // allowSend consults the rate limiter. On a limiter error it fails open

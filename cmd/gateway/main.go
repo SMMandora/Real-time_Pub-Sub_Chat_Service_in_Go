@@ -55,6 +55,44 @@ func (h histAdapter) Before(ctx context.Context, room string, beforeID int64, li
 
 func (h histAdapter) Ping(ctx context.Context) error { return h.store.Ping(ctx) }
 
+type roomAdapter struct {
+	store *persistence.PgxStore
+}
+
+func (a roomAdapter) Lookup(ctx context.Context, id string) (gateway.RoomRecord, bool, error) {
+	r, found, err := a.store.GetRoom(ctx, id)
+	if err != nil || !found {
+		return gateway.RoomRecord{}, found, err
+	}
+	return gateway.RoomRecord{ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken}, true, nil
+}
+
+func (a roomAdapter) Create(ctx context.Context, r gateway.RoomRecord) error {
+	err := a.store.CreateRoom(ctx, persistence.RoomRecord{
+		ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken, CreatedMS: time.Now().UnixMilli(),
+	})
+	if errors.Is(err, persistence.ErrRoomExists) {
+		return gateway.ErrRoomExists
+	}
+	return err
+}
+
+func (a roomAdapter) List(ctx context.Context) ([]gateway.RoomRecord, error) {
+	recs, err := a.store.ListRooms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.RoomRecord, len(recs))
+	for i, r := range recs {
+		out[i] = gateway.RoomRecord{ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken}
+	}
+	return out, nil
+}
+
+func (a roomAdapter) Delete(ctx context.Context, id string) error {
+	return a.store.DeleteRoom(ctx, id)
+}
+
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -98,14 +136,16 @@ func main() {
 	}
 	pgCancel()
 
-	hist := histAdapter{store: persistence.NewPgxStore(pool)}
+	store := persistence.NewPgxStore(pool)
+	hist := histAdapter{store: store}
+	rooms := roomAdapter{store: store}
 
 	hub := gateway.NewHub(bus)
 	presence := gateway.NewRedisPresenceStore(redisAddr)
 	defer presence.Close()
 	limiter := gateway.NewRedisRateLimiter(redisAddr, 30, 0.5)
 	defer limiter.Close()
-	srv := gateway.NewServer(hub, bus, hist, presence, limiter, log, webDir)
+	srv := gateway.NewServer(hub, bus, hist, presence, limiter, rooms, log, webDir)
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

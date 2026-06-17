@@ -48,6 +48,7 @@ func newTestClient(reg roomRegistry, hist history, cancel context.CancelFunc) *C
 		history:  hist,
 		presence: newFakePresenceStore(),
 		limiter:  &fakeRateLimiter{allow: true},
+		rooms:    newFakeRoomStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(context.Background(), "tester", cfg, cancel)
@@ -59,6 +60,7 @@ func newPresenceClient(ctx context.Context, reg roomRegistry, ps PresenceStore, 
 		history:  &fakeHistory{},
 		presence: ps,
 		limiter:  &fakeRateLimiter{allow: true},
+		rooms:    newFakeRoomStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(ctx, "tester", cfg, cancel)
@@ -70,9 +72,22 @@ func newRateClient(reg roomRegistry, limiter RateLimiter) *Client {
 		history:  &fakeHistory{},
 		presence: newFakePresenceStore(),
 		limiter:  limiter,
+		rooms:    newFakeRoomStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(context.Background(), "alice", cfg, func() {})
+}
+
+func newJoinGateClient(reg roomRegistry, rooms RoomStore) *Client {
+	cfg := clientConfig{
+		hub:      reg,
+		history:  &fakeHistory{},
+		presence: newFakePresenceStore(),
+		limiter:  &fakeRateLimiter{allow: true},
+		rooms:    rooms,
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	return newClient(context.Background(), "tester", cfg, func() {})
 }
 
 func waitForFrames(t *testing.T, c *Client, n int) []Frame {
@@ -355,5 +370,57 @@ func TestSendFailsOpenOnLimiterError(t *testing.T) {
 
 	if len(reg.published) != 1 {
 		t.Fatalf("a limiter error should fail open and publish, got %+v", reg.published)
+	}
+}
+
+func TestJoinUnregisteredRoomAllowed(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newJoinGateClient(reg, newFakeRoomStore())
+	c.handleFrame(Frame{Type: TypeJoin, Room: "general"})
+	if len(reg.joined) != 1 {
+		t.Fatalf("expected join of public room, got %+v", reg.joined)
+	}
+}
+
+func TestJoinPrivateRoomRequiresToken(t *testing.T) {
+	reg := &fakeRegistry{}
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "secret", Visibility: "private", InviteToken: "tok"})
+	c := newJoinGateClient(reg, rooms)
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "secret"})
+
+	if len(reg.joined) != 0 {
+		t.Fatal("join of private room without token must be rejected")
+	}
+	out := drain(c)
+	if len(out) != 1 || out[0].Type != TypeError {
+		t.Fatalf("expected one error frame, got %+v", out)
+	}
+}
+
+func TestJoinPrivateRoomWithToken(t *testing.T) {
+	reg := &fakeRegistry{}
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "secret", Visibility: "private", InviteToken: "tok"})
+	c := newJoinGateClient(reg, rooms)
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "secret", Token: "tok"})
+
+	if len(reg.joined) != 1 {
+		t.Fatalf("join with correct token should be allowed, got %+v", reg.joined)
+	}
+}
+
+func TestJoinLookupErrorFailsClosed(t *testing.T) {
+	reg := &fakeRegistry{}
+	rooms := newFakeRoomStore()
+	rooms.lookupErr = errors.New("db down")
+	c := newJoinGateClient(reg, rooms)
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+
+	if len(reg.joined) != 0 {
+		t.Fatal("a lookup error must fail closed (no join)")
 	}
 }

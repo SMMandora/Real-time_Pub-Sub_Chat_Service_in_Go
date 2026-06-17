@@ -27,17 +27,19 @@ type Server struct {
 	hub       *Hub
 	bus       pinger
 	hist      history
+	rooms     RoomStore
 	log       *slog.Logger
 	webDir    string
 	clientCfg clientConfig
 	draining  atomic.Bool
 }
 
-func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, limiter RateLimiter, log *slog.Logger, webDir string) *Server {
+func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, limiter RateLimiter, rooms RoomStore, log *slog.Logger, webDir string) *Server {
 	return &Server{
 		hub:    hub,
 		bus:    bus,
 		hist:   hist,
+		rooms:  rooms,
 		log:    log,
 		webDir: webDir,
 		clientCfg: clientConfig{
@@ -45,6 +47,7 @@ func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, limit
 			history:  hist,
 			presence: presence,
 			limiter:  limiter,
+			rooms:    rooms,
 			log:      log,
 		},
 	}
