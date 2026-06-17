@@ -10,16 +10,24 @@ message lifecycle.
 
 ## Run
 
-Slice 2+ needs Redis; slice 3a adds Postgres. Start both with Docker:
+**Whole stack in containers** (gateway, worker, Redis, Postgres, Prometheus,
+Grafana, Jaeger) — one command:
 
 ```bash
-docker compose up -d        # Redis 7 on :6379, Postgres 16 on :5432
-go run ./cmd/gateway        # WebSocket gateway on :8080
-go run ./cmd/worker         # persistence worker on :8090
+docker compose up --build
 ```
 
-Open http://localhost:8080/ in two browser tabs, join the same room, and chat.
-Messages fan out in real time and the worker persists them to Postgres.
+**Or run the apps locally** against containerized infra:
+
+```bash
+docker compose up -d redis postgres   # + prometheus grafana jaeger if you want
+go run ./cmd/gateway                   # WebSocket gateway on :8080
+go run ./cmd/worker                    # persistence worker on :8090
+```
+
+Open http://localhost:8080/ in two browser tabs, pick a username, join the same
+room, and chat. Messages fan out in real time and the worker persists them to
+Postgres.
 
 Environment variables:
 
@@ -54,15 +62,16 @@ Each service exposes Prometheus metrics at `/metrics`:
 - worker (`:8090/metrics`): `chat_messages_persisted_total`,
   `chat_persist_batch_size`, `chat_persist_queue_depth`.
 
-`docker compose up -d` also starts Prometheus (`:9090`, scraping the host-run
-gateway/worker) and Grafana (`:3000`, anonymous admin) with the "Chat Service"
+The compose stack also starts Prometheus (`:9090`, scraping the `gateway` and
+`worker` services) and Grafana (`:3000`, anonymous admin) with the "Chat Service"
 dashboard provisioned from `deploy/grafana/dashboards/chat.json`.
 
-Distributed tracing is OpenTelemetry → Jaeger. Set
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` when running the gateway and
-worker; spans (`chat.send` → `chat.fanout` → `chat.consume`) appear in the Jaeger
-UI at http://localhost:16686. Without that env var, tracing is a no-op. Each
-service also logs `trace_id` for log correlation.
+Distributed tracing is OpenTelemetry → Jaeger. In compose the apps export to
+Jaeger automatically (`OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318`); when
+running locally, set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`. Spans
+(`chat.send` → `chat.fanout` → `chat.consume`) appear in the Jaeger UI at
+http://localhost:16686. Without that env var, tracing is a no-op. Each service
+also logs `trace_id` for log correlation.
 
 ## Test
 

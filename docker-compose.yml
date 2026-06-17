@@ -1,4 +1,32 @@
 services:
+  gateway:
+    build:
+      context: .
+      target: gateway
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_ADDR: redis:6379
+      DATABASE_URL: postgres://chat:chat@postgres:5432/chat?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      - redis
+      - postgres
+    restart: on-failure
+  worker:
+    build:
+      context: .
+      target: worker
+    ports:
+      - "8090:8090"
+    environment:
+      REDIS_ADDR: redis:6379
+      DATABASE_URL: postgres://chat:chat@postgres:5432/chat?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    depends_on:
+      - redis
+      - postgres
+    restart: on-failure
   redis:
     image: redis:7
     ports:
@@ -18,8 +46,6 @@ services:
       - "9090:9090"
     volumes:
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
   grafana:
     image: grafana/grafana:latest
     ports:
