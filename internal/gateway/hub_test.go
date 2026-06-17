@@ -32,8 +32,10 @@ func TestHubSubscribesOncePerRoom(t *testing.T) {
 	h := NewHub(bus)
 	h.Join("general", &fakeMember{id: "a"})
 	h.Join("general", &fakeMember{id: "b"})
-	if bus.subscribeCount() != 1 {
-		t.Fatalf("expected 1 subscribe for two joiners of same room, got %d", bus.subscribeCount())
+	// First join subscribes the room and presence channels (2); the second
+	// joiner of the same room adds no further subscribes.
+	if bus.subscribeCount() != 2 {
+		t.Fatalf("expected 2 subscribes (room+presence) for two joiners of same room, got %d", bus.subscribeCount())
 	}
 }
 

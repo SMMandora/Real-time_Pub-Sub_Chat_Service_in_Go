@@ -22,13 +22,14 @@ type Server struct {
 	hub      *Hub
 	bus      pinger
 	hist     history
+	presence PresenceStore
 	log      *slog.Logger
 	webDir   string
 	draining atomic.Bool
 }
 
-func NewServer(hub *Hub, bus pinger, hist history, log *slog.Logger, webDir string) *Server {
-	return &Server{hub: hub, bus: bus, hist: hist, log: log, webDir: webDir}
+func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, log *slog.Logger, webDir string) *Server {
+	return &Server{hub: hub, bus: bus, hist: hist, presence: presence, log: log, webDir: webDir}
 }
 
 func (s *Server) Router() http.Handler {
@@ -122,9 +123,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	client := newClient(ctx, s.hub, s.hist, s.log, cancel)
+	client := newClient(ctx, s.hub, s.hist, s.presence, s.log, cancel)
 	s.hub.Register(client)
 	s.log.Info("client connected", "id", client.ID())
+	go client.heartbeat()
 
 	defer func() {
 		client.leaveAll()

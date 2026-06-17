@@ -14,6 +14,7 @@ type fakeRegistry struct {
 	joined     []string
 	left       []string
 	published  []Frame
+	presence   []Frame
 	publishErr error
 }
 
@@ -22,6 +23,11 @@ func (f *fakeRegistry) Leave(roomID string, m member) { f.left = append(f.left, 
 func (f *fakeRegistry) Publish(roomID string, fr Frame) error {
 	f.published = append(f.published, fr)
 	return f.publishErr
+}
+
+func (f *fakeRegistry) PublishPresence(room string, fr Frame) error {
+	f.presence = append(f.presence, fr)
+	return nil
 }
 
 func drain(c *Client) []Frame {
@@ -37,7 +43,7 @@ func drain(c *Client) []Frame {
 }
 
 func newTestClient(reg roomRegistry, hist history, cancel context.CancelFunc) *Client {
-	return newClient(context.Background(), reg, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), cancel)
+	return newClient(context.Background(), reg, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), cancel)
 }
 
 func waitForFrames(t *testing.T, c *Client, n int) []Frame {
@@ -196,4 +202,92 @@ func TestJoinReplayErrorEnqueuesNothing(t *testing.T) {
 	if got := drain(c); len(got) != 0 {
 		t.Fatalf("expected no frames on history error, got %+v", got)
 	}
+}
+
+func TestJoinAddsPresenceAndBroadcastsSnapshot(t *testing.T) {
+	reg := &fakeRegistry{}
+	ps := newFakePresenceStore()
+	c := newClient(context.Background(), reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), func() {})
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+
+	if ps.addCallCount() == 0 {
+		t.Fatal("expected presence Add on join")
+	}
+	if len(reg.presence) != 1 || reg.presence[0].Type != TypePresence || reg.presence[0].Room != "x" {
+		t.Fatalf("expected one presence snapshot frame, got %+v", reg.presence)
+	}
+	if len(reg.presence[0].Members) != 1 || reg.presence[0].Members[0] != c.ID() {
+		t.Fatalf("expected snapshot to contain joiner, got %+v", reg.presence[0].Members)
+	}
+}
+
+func TestLeaveRemovesPresenceAndBroadcasts(t *testing.T) {
+	reg := &fakeRegistry{}
+	ps := newFakePresenceStore()
+	c := newClient(context.Background(), reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), func() {})
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	c.handleFrame(Frame{Type: TypeLeave, Room: "x"})
+
+	// After leave, the latest snapshot must not contain the member.
+	last := reg.presence[len(reg.presence)-1]
+	if len(last.Members) != 0 {
+		t.Fatalf("expected empty snapshot after leave, got %+v", last.Members)
+	}
+}
+
+func TestTypingPublishesTypingFrame(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newTestClient(reg, &fakeHistory{}, func() {})
+
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	c.handleFrame(Frame{Type: TypeTyping, Room: "x"})
+
+	var typing *Frame
+	for i := range reg.presence {
+		if reg.presence[i].Type == TypeTyping {
+			typing = &reg.presence[i]
+		}
+	}
+	if typing == nil || typing.Room != "x" || typing.From != c.ID() {
+		t.Fatalf("expected a typing frame from %s in room x, got %+v", c.ID(), reg.presence)
+	}
+}
+
+func TestTypingRequiresJoin(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newTestClient(reg, &fakeHistory{}, func() {})
+
+	c.handleFrame(Frame{Type: TypeTyping, Room: "x"})
+
+	for _, f := range reg.presence {
+		if f.Type == TypeTyping {
+			t.Fatal("typing before join should not publish")
+		}
+	}
+}
+
+func TestHeartbeatRefreshesPresence(t *testing.T) {
+	reg := &fakeRegistry{}
+	ps := newFakePresenceStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newClient(ctx, reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), cancel)
+	c.hbInterval = 10 * time.Millisecond
+
+	c.mu.Lock()
+	c.joined["x"] = true
+	c.mu.Unlock()
+
+	go c.heartbeat()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if ps.addCallCount() >= 2 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("expected heartbeat to call Add repeatedly, got %d", ps.addCallCount())
 }

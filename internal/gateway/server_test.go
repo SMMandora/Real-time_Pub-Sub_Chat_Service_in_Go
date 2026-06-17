@@ -38,7 +38,7 @@ func TestParseLimitClampsAndDefaults(t *testing.T) {
 func newTestServer() *Server {
 	bus := newFakeBus()
 	hub := NewHub(bus)
-	return NewServer(hub, bus, &fakeHistory{}, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	return NewServer(hub, bus, &fakeHistory{}, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 }
 
 func TestHealthzAlwaysOK(t *testing.T) {
@@ -146,7 +146,7 @@ func TestReadyzFailsWhenRedisDown(t *testing.T) {
 	bus := newFakeBus()
 	bus.pingErr = errors.New("redis down")
 	hub := NewHub(bus)
-	srv := NewServer(hub, bus, &fakeHistory{}, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(hub, bus, &fakeHistory{}, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -158,7 +158,7 @@ func TestReadyzFailsWhenRedisDown(t *testing.T) {
 func TestReadyzFailsWhenPostgresDown(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{pingErr: errors.New("pg down")}
-	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -173,7 +173,7 @@ func TestHistoryEndpointReturnsMessages(t *testing.T) {
 		{ID: 1, From: "u", Text: "a", TS: 1},
 		{ID: 2, From: "u", Text: "b", TS: 2},
 	}}
-	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))
@@ -194,7 +194,7 @@ func TestHistoryEndpointReturnsMessages(t *testing.T) {
 func TestHistoryEndpointBeforeParam(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{before: []StoredMessage{{ID: 5, From: "u", Text: "e", TS: 5}}}
-	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages?before=10", nil))
@@ -209,7 +209,7 @@ func TestHistoryEndpointBeforeParam(t *testing.T) {
 func TestHistoryEndpointStoreErrorReturns503(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{err: errors.New("down")}
-	srv := NewServer(NewHub(bus), bus, hist, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))

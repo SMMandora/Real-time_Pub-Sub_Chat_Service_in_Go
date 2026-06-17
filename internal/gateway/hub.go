@@ -62,6 +62,7 @@ func (h *Hub) Join(roomID string, m member) {
 		h.rooms[roomID] = r
 		go r.run()
 		_ = h.bus.Subscribe(context.Background(), roomChannel(roomID))
+		_ = h.bus.Subscribe(context.Background(), presenceChannel(roomID))
 	}
 	r.join <- m
 }
@@ -82,6 +83,7 @@ func (h *Hub) Leave(roomID string, m member) {
 		close(r.done)
 		delete(h.rooms, roomID)
 		_ = h.bus.Unsubscribe(context.Background(), roomChannel(roomID))
+		_ = h.bus.Unsubscribe(context.Background(), presenceChannel(roomID))
 	}
 }
 
@@ -102,6 +104,16 @@ func (h *Hub) Publish(roomID string, f Frame) error {
 		return err
 	}
 	return h.bus.Publish(context.Background(), roomChannel(roomID), payload)
+}
+
+// PublishPresence broadcasts a presence or typing frame on the room's side
+// channel. Unlike Publish it assigns no id and is never persisted.
+func (h *Hub) PublishPresence(roomID string, f Frame) error {
+	payload, err := f.encode()
+	if err != nil {
+		return err
+	}
+	return h.bus.Publish(context.Background(), presenceChannel(roomID), payload)
 }
 
 // deliverLocal fans a frame out to local members of a room. It is called only by

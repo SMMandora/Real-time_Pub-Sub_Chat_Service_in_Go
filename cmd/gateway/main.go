@@ -89,7 +89,9 @@ func main() {
 	hist := histAdapter{store: persistence.NewPgxStore(pool)}
 
 	hub := gateway.NewHub(bus)
-	srv := gateway.NewServer(hub, bus, hist, log, webDir)
+	presence := gateway.NewRedisPresenceStore(redisAddr)
+	defer presence.Close()
+	srv := gateway.NewServer(hub, bus, hist, presence, log, webDir)
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
