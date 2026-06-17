@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat — Slice 1 demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    #log { border: 1px solid #ccc; height: 320px; overflow-y: auto; padding: .5rem; margin: .5rem 0; }
+    .row { display: flex; gap: .5rem; margin: .5rem 0; }
+    .row input { flex: 1; padding: .4rem; }
+    .sys { color: #888; font-style: italic; }
+    .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Chat demo</h1>
+  <div class="row">
+    <input id="room" value="general" placeholder="room" />
+    <button id="join">Join</button>
+    <span id="status">disconnected</span>
+  </div>
+  <div id="log"></div>
+  <div class="row">
+    <input id="text" placeholder="message" />
+    <button id="send">Send</button>
+  </div>
+
+  <script>
+    const log = document.getElementById("log");
+    const statusEl = document.getElementById("status");
+    let ws = null;
+    let room = null;
+
+    function add(text, cls) {
+      const div = document.createElement("div");
+      if (cls) div.className = cls;
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function connect() {
+      ws = new WebSocket(`ws://${location.host}/ws`);
+      ws.onopen = () => { statusEl.textContent = "connected"; };
+      ws.onclose = () => { statusEl.textContent = "disconnected"; };
+      ws.onmessage = (ev) => {
+        const f = JSON.parse(ev.data);
+        if (f.type === "message") add(`${f.from}: ${f.text}`);
+        else if (f.type === "system") add(`* ${f.from} ${f.event}ed ${f.room}`, "sys");
+        else if (f.type === "error") add(`! ${f.message}`, "err");
+      };
+    }
+
+    document.getElementById("join").onclick = () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) connect();
+      const tryJoin = () => {
+        room = document.getElementById("room").value.trim();
+        ws.send(JSON.stringify({ type: "join", room }));
+        add(`joining ${room}…`, "sys");
+      };
+      if (ws.readyState === WebSocket.OPEN) tryJoin();
+      else ws.addEventListener("open", tryJoin, { once: true });
+    };
+
+    document.getElementById("send").onclick = () => {
+      const text = document.getElementById("text").value;
+      if (!room || !ws || ws.readyState !== WebSocket.OPEN || !text) return;
+      ws.send(JSON.stringify({ type: "send", room, text }));
+      document.getElementById("text").value = "";
+    };
+  </script>
+</body>
+</html>
