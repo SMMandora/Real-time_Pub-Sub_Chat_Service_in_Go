@@ -1,7 +1,8 @@
 # Real-time Chat Service
 
-Horizontally scalable real-time chat, built in slices. This is **slice 1**: a
-single in-memory WebSocket gateway.
+Horizontally scalable real-time chat, built in slices. Through **slice 2**:
+multiple stateless WebSocket gateway replicas that fan messages out to each
+other via Redis pub/sub.
 
 ## Run
 
@@ -28,7 +29,7 @@ Environment variables:
   `{"type":"send","room":"general","text":"hi"}`, `{"type":"leave","room":"general"}`.
   Server sends `message`, `system`, and `error` frames.
 - `GET /healthz` — liveness (always 200).
-- `GET /readyz` — readiness (503 while shutting down).
+- `GET /readyz` — readiness (503 while shutting down or when Redis is unreachable).
 
 ## Test
 

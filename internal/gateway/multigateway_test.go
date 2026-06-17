@@ -23,6 +23,9 @@ func TestCrossGatewayFanout(t *testing.T) {
 	hubA := NewHub(busA)
 	hubB := NewHub(busB)
 
+	// hubB.Join calls bus.Subscribe synchronously, and go-redis's PubSub.Subscribe
+	// waits for Redis to confirm the SUBSCRIBE before returning. So by the time the
+	// Publish below runs, miniredis already has B registered — no extra sync needed.
 	b := &fakeMember{id: "b"}
 	hubB.Join("x", b) // gateway B subscribes room:x
 	a := &fakeMember{id: "a"}

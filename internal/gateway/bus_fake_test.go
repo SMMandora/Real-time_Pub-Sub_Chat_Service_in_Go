@@ -14,7 +14,6 @@ type fakeBus struct {
 	subscribed map[string]bool
 	published  []busMsg
 	subCount   int
-	unsubCount int
 	pingErr    error
 }
 
@@ -50,7 +49,6 @@ func (b *fakeBus) Subscribe(_ context.Context, channel string) error {
 func (b *fakeBus) Unsubscribe(_ context.Context, channel string) error {
 	b.mu.Lock()
 	delete(b.subscribed, channel)
-	b.unsubCount++
 	b.mu.Unlock()
 	return nil
 }
