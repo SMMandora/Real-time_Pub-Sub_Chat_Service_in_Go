@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	roomChannelPrefix = "room:"
+	roomChannelPrefix     = "room:"
+	presenceChannelPrefix = "presence:"
 	// controlChannel keeps the pub/sub connection active even when no rooms
 	// are subscribed yet, avoiding empty-subscription edge cases.
 	controlChannel = "gateway:control"
@@ -16,7 +17,12 @@ const (
 
 func roomChannel(id string) string { return roomChannelPrefix + id }
 
+func presenceChannel(id string) string { return presenceChannelPrefix + id }
+
 func roomFromChannel(channel string) string {
+	if strings.HasPrefix(channel, presenceChannelPrefix) {
+		return strings.TrimPrefix(channel, presenceChannelPrefix)
+	}
 	return strings.TrimPrefix(channel, roomChannelPrefix)
 }
 

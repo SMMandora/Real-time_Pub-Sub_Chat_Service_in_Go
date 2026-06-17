@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestFrameConstructors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.got != tt.want {
+			if !reflect.DeepEqual(tt.got, tt.want) {
 				t.Fatalf("got %+v want %+v", tt.got, tt.want)
 			}
 		})
@@ -46,7 +47,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in != out {
+	if !reflect.DeepEqual(in, out) {
 		t.Fatalf("round trip mismatch: %+v != %+v", in, out)
 	}
 }

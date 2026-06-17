@@ -5,23 +5,26 @@ import "encoding/json"
 // Frame is the single JSON envelope for every message on the wire.
 // omitempty keeps each frame minimal; unused fields are simply absent.
 type Frame struct {
-	Type    string `json:"type"`
-	Room    string `json:"room,omitempty"`
-	ID      int64  `json:"id,omitempty"`
-	Text    string `json:"text,omitempty"`
-	From    string `json:"from,omitempty"`
-	TS      int64  `json:"ts,omitempty"`
-	Event   string `json:"event,omitempty"`
-	Message string `json:"message,omitempty"`
+	Type    string   `json:"type"`
+	Room    string   `json:"room,omitempty"`
+	ID      int64    `json:"id,omitempty"`
+	Text    string   `json:"text,omitempty"`
+	From    string   `json:"from,omitempty"`
+	TS      int64    `json:"ts,omitempty"`
+	Event   string   `json:"event,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Members []string `json:"members,omitempty"`
 }
 
 const (
-	TypeJoin    = "join"
-	TypeLeave   = "leave"
-	TypeSend    = "send"
-	TypeMessage = "message"
-	TypeSystem  = "system"
-	TypeError   = "error"
+	TypeJoin     = "join"
+	TypeLeave    = "leave"
+	TypeSend     = "send"
+	TypeMessage  = "message"
+	TypeSystem   = "system"
+	TypeError    = "error"
+	TypePresence = "presence"
+	TypeTyping   = "typing"
 )
 
 func messageFrame(room, from, text string, ts int64) Frame {
@@ -34,6 +37,14 @@ func systemFrame(room, event, from string) Frame {
 
 func errorFrame(msg string) Frame {
 	return Frame{Type: TypeError, Message: msg}
+}
+
+func presenceFrame(room string, members []string) Frame {
+	return Frame{Type: TypePresence, Room: room, Members: members}
+}
+
+func typingFrame(room, from string) Frame {
+	return Frame{Type: TypeTyping, Room: room, From: from}
 }
 
 func (f Frame) encode() ([]byte, error) {
