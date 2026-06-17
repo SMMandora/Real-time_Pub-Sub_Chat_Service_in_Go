@@ -51,6 +51,7 @@ func (b *Batcher) Run() {
 	for {
 		select {
 		case m := <-b.in:
+			QueueDepth.Set(float64(len(b.in)))
 			batch = append(batch, m)
 			if len(batch) >= b.maxSize {
 				flush()
@@ -82,8 +83,11 @@ func (b *Batcher) writeBatch(batch []Message) {
 	if err := b.tryInsert(msgs); err != nil {
 		if err2 := b.tryInsert(msgs); err2 != nil {
 			b.log.Warn("dropping batch after retry", "count", len(msgs), "err", err2)
+			return
 		}
 	}
+	MessagesPersisted.Add(float64(len(msgs)))
+	BatchSize.Observe(float64(len(msgs)))
 }
 
 func (b *Batcher) tryInsert(msgs []Message) error {
