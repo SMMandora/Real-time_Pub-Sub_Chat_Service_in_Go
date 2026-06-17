@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+func TestHubDeliversPresenceFrameToMembers(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
+	a := &fakeMember{id: "a"}
+	h.Join("x", a) // subscribes both room:x and presence:x
+
+	// A frame published to presence:x must route (via the generalized
+	// roomFromChannel) to room x's local members.
+	if err := h.PublishPresence("x", presenceFrame("x", []string{"a"})); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		for _, f := range a.frames() {
+			if f.Type == TypePresence && len(f.Members) == 1 && f.Members[0] == "a" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func TestHubLazyCreateAndReapAndSubscribe(t *testing.T) {
 	bus := newFakeBus()
 	h := NewHub(bus)
