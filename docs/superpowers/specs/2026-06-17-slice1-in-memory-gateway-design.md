@@ -158,7 +158,7 @@ format end to end (connect → join → send → receive `message`).
 ## Project layout
 
 ```
-go.mod                      # module github.com/roguerapheal/realtime-chat
+go.mod                      # module github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go
 cmd/gateway/main.go
 internal/gateway/
   protocol.go
@@ -173,8 +173,8 @@ web/index.html              # vanilla-JS demo client (no build step)
 README.md
 ```
 
-The module path is a placeholder derived from the user's email handle and can
-be changed without affecting the design.
+The module path matches the project's git remote
+(`github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go`).
 
 ## Acceptance criteria
 
