@@ -33,6 +33,7 @@ if tokens >= cost then
   tokens = tokens - cost
   allowed = 1
 end
+-- tokens is a float; Redis round-trips it through a string faithfully.
 redis.call('HSET', KEYS[1], 'tokens', tokens, 'ts', now)
 redis.call('PEXPIRE', KEYS[1], 120000)
 return allowed
@@ -56,6 +57,9 @@ func NewRedisRateLimiter(addr string, capacity int, refillPerSec float64) *Redis
 func rateLimitKey(user string) string { return "ratelimit:" + user }
 
 func (r *RedisRateLimiter) Allow(ctx context.Context, user string) (bool, error) {
+	// now is this gateway's wall clock. Under cross-gateway clock skew the
+	// stored ts can jump backward, making elapsed negative and stalling the
+	// refill for that call — never over-filling, so it fails safe (stricter).
 	res, err := tokenBucketScript.Run(ctx, r.rdb, []string{rateLimitKey(user)},
 		r.capacity, r.refillPerSec, time.Now().UnixMilli(), 1).Int64()
 	if err != nil {
