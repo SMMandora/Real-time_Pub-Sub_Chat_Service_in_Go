@@ -29,6 +29,7 @@
   <script>
     const log = document.getElementById("log");
     const statusEl = document.getElementById("status");
+    const seenIds = new Set();
     let ws = null;
     let room = null;
 
@@ -46,7 +47,11 @@
       ws.onclose = () => { statusEl.textContent = "disconnected"; };
       ws.onmessage = (ev) => {
         const f = JSON.parse(ev.data);
-        if (f.type === "message") add(`${f.from}: ${f.text}`);
+        if (f.type === "message") {
+          if (f.id && seenIds.has(f.id)) return;
+          if (f.id) seenIds.add(f.id);
+          add(`${f.from}: ${f.text}`);
+        }
         else if (f.type === "system") add(`* ${f.from} ${f.event}ed ${f.room}`, "sys");
         else if (f.type === "error") add(`! ${f.message}`, "err");
       };

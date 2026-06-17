@@ -30,6 +30,10 @@ Environment variables:
 - `GET /ws` — WebSocket. JSON frames: `{"type":"join","room":"general"}`,
   `{"type":"send","room":"general","text":"hi"}`, `{"type":"leave","room":"general"}`.
   Server sends `message`, `system`, and `error` frames.
+- `GET /api/rooms/{room}/messages?limit=&before=` — paginated history JSON
+  (`{"messages":[{"id","from","text","ts"}]}`); `limit` default 100 (max 200),
+  `before` returns messages with id < before. Joining a room also replays the
+  last 100 messages (or messages after the `id` sent on the JOIN frame).
 - `GET /healthz` — liveness (always 200).
 - `GET /readyz` — readiness (503 while shutting down or when Redis is unreachable).
 
@@ -42,4 +46,4 @@ go test ./... -race
 ## Roadmap
 
 Slice 1 (done) → Redis fan-out (done) → Postgres persistence (done) →
-history API → presence/typing → rate limiting/auth → observability → K8s + load test.
+history + replay (done) → presence/typing → rate limiting/auth → observability → K8s + load test.
