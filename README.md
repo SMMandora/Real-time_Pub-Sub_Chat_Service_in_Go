@@ -27,10 +27,13 @@ Environment variables:
 
 ## Endpoints
 
-- `GET /ws` — WebSocket. Client frames: `join` (optional `id` = last-seen
-  cursor), `send`, `leave`, `typing`. Server frames: `message`, `system`,
-  `error`, `presence` (member list), `typing`. Presence and typing ride a
-  `presence:{room}` side channel and are never persisted.
+- `GET /ws?username=<name>` — WebSocket. `username` is required and must match
+  `^[A-Za-z0-9_-]{1,32}$` (else HTTP 400); it is the identity in `message.from`,
+  presence, and typing. Client frames: `join` (optional `id` = last-seen cursor),
+  `send`, `leave`, `typing`. Server frames: `message`, `system`, `error`,
+  `presence` (member list), `typing`. Each user is limited to 30 messages/minute
+  (Redis token bucket); over-limit sends get an `error` frame. Presence and
+  typing ride a `presence:{room}` side channel and are never persisted.
 - `GET /api/rooms/{room}/messages?limit=&before=` — paginated history JSON
   (`{"messages":[{"id","from","text","ts"}]}`); `limit` default 100 (max 200),
   `before` returns messages with id < before. Joining a room also replays the
@@ -47,4 +50,4 @@ go test ./... -race
 ## Roadmap
 
 Slice 1 (done) → Redis fan-out (done) → Postgres persistence (done) →
-history + replay (done) → presence + typing (done) → rate limiting/auth → observability → K8s + load test.
+history + replay (done) → presence + typing (done) → auth + rate limiting (done) → observability → K8s + load test.

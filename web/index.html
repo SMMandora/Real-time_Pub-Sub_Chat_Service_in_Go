@@ -35,6 +35,8 @@
     let typingTimer = null;
     let ws = null;
     let room = null;
+    const username = (prompt("Choose a username (letters, digits, _ or -):", "guest") || "guest")
+      .replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || "guest";
 
     function add(text, cls) {
       const div = document.createElement("div");
@@ -45,7 +47,7 @@
     }
 
     function connect() {
-      ws = new WebSocket(`ws://${location.host}/ws`);
+      ws = new WebSocket(`ws://${location.host}/ws?username=${encodeURIComponent(username)}`);
       ws.onopen = () => { statusEl.textContent = "connected"; };
       ws.onclose = () => { statusEl.textContent = "disconnected"; };
       ws.onmessage = (ev) => {
