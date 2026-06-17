@@ -1,0 +1,55 @@
+# Persistence worker: a single consumer (pub/sub fan-out is broadcast, so running
+# multiple replicas would double-write — kept at 1 until a Redis Streams consumer
+# group is introduced). A Service exposes /metrics for scraping.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: { app: worker }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # avoid two workers overlapping during a rollout
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: worker
+          image: chat-worker:latest         # build from ./Dockerfile target worker
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - configMapRef: { name: chat-config }
+            - secretRef: { name: chat-secret }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8090 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker
+  labels: { app: worker }
+spec:
+  selector: { app: worker }
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090

@@ -1,0 +1,20 @@
+# Non-secret configuration shared by the gateway and worker.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chat-config
+data:
+  REDIS_ADDR: "redis:6379"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+  ADDR: ":8080"
+  WORKER_ADDR: ":8090"
+---
+# DATABASE_URL holds the Postgres password, so it lives in a Secret.
+# Replace the credentials before applying to a real cluster.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chat-secret
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://chat:chat@postgres:5432/chat?sslmode=disable"
