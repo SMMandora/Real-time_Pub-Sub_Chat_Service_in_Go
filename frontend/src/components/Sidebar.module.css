@@ -130,6 +130,24 @@
   color: #fff;
 }
 
+.adminBtn {
+  width: 100%;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-top: var(--sp-2);
+  transition: background 0.15s, color 0.15s;
+}
+
+.adminBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .emptyRooms {
   padding: var(--sp-3) var(--sp-4);
   font-size: var(--text-sm);

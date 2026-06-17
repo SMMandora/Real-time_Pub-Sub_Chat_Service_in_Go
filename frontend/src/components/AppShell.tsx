@@ -27,12 +27,13 @@ interface Props {
   onTyping: (room: string) => void
   onRefreshRooms: () => void
   onDismissError: (i: number) => void
+  onOpenAdmin: () => void
 }
 
 export function AppShell({
   username, status, rooms, activeRoom, messages, members,
   typing, errors, recovering,
-  onJoin, onSend, onTyping, onRefreshRooms, onDismissError,
+  onJoin, onSend, onTyping, onRefreshRooms, onDismissError, onOpenAdmin,
 }: Props) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -79,6 +80,7 @@ export function AppShell({
           activeRoom={activeRoom}
           onJoin={(id) => { onJoin(id); closeDrawers() }}
           onCreateRoom={() => { setShowCreateModal(true); closeDrawers() }}
+          onOpenAdmin={() => { onOpenAdmin(); closeDrawers() }}
         />
       </div>
 

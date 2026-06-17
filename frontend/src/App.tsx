@@ -2,13 +2,19 @@ import { useState } from 'react'
 import { useChat } from './useChat'
 import { LoginGate } from './components/LoginGate'
 import { AppShell } from './components/AppShell'
+import { AdminDashboard } from './admin/AdminDashboard'
 
 export default function App() {
   const [username, setUsername] = useState<string | null>(null)
+  const [view, setView] = useState<'chat' | 'admin'>('chat')
   const chat = useChat(username)
 
   if (!username) {
     return <LoginGate onLogin={setUsername} />
+  }
+
+  if (view === 'admin') {
+    return <AdminDashboard onBack={() => setView('chat')} />
   }
 
   return (
@@ -28,6 +34,7 @@ export default function App() {
       onTyping={chat.sendTyping}
       onRefreshRooms={chat.refreshRooms}
       onDismissError={chat.dismissError}
+      onOpenAdmin={() => setView('admin')}
     />
   )
 }

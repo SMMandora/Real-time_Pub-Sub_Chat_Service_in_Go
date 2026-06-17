@@ -9,6 +9,7 @@ interface Props {
   activeRoom: string | null
   onJoin: (id: string) => void
   onCreateRoom: () => void
+  onOpenAdmin: () => void
 }
 
 function statusDotClass(status: Status) {
@@ -18,7 +19,7 @@ function statusDotClass(status: Status) {
   return s.dotIdle
 }
 
-export function Sidebar({ username, status, rooms, activeRoom, onJoin, onCreateRoom }: Props) {
+export function Sidebar({ username, status, rooms, activeRoom, onJoin, onCreateRoom, onOpenAdmin }: Props) {
   return (
     <div className={s.sidebar}>
       <div className={s.header}>
@@ -50,6 +51,9 @@ export function Sidebar({ username, status, rooms, activeRoom, onJoin, onCreateR
       <div className={s.footer}>
         <button className={s.createBtn} onClick={onCreateRoom}>
           + Create room
+        </button>
+        <button className={s.adminBtn} onClick={onOpenAdmin}>
+          ⚙ Admin
         </button>
       </div>
     </div>
