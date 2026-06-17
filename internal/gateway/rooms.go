@@ -13,6 +13,8 @@ var ErrRoomExists = errors.New("room already exists")
 // RoomRecord is a registered room as the gateway consumes it.
 type RoomRecord struct {
 	ID          string
+	Name        string
+	Description string
 	Visibility  string
 	InviteToken string
 }

@@ -364,3 +364,38 @@ func TestGetRoomReturnsMetadataWithoutToken(t *testing.T) {
 		t.Fatalf("unexpected room metadata: %+v", v)
 	}
 }
+
+func TestListRoomsIncludesMetadataAndOnlineCount(t *testing.T) {
+	bus := newFakeBus()
+	ps := newFakePresenceStore()
+	ps.Add(context.Background(), "general", "alice", nowMillis())
+	ps.Add(context.Background(), "general", "bob", nowMillis())
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "general", Name: "General", Description: "main room", Visibility: "public"})
+	srv := NewServer(NewHub(bus), bus, &fakeHistory{}, ps, &fakeRateLimiter{allow: true}, rooms, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list = %d, want 200", rec.Code)
+	}
+	var resp struct {
+		Rooms []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Visibility  string `json:"visibility"`
+			Online      int    `json:"online"`
+		} `json:"rooms"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Rooms) != 1 {
+		t.Fatalf("expected 1 room, got %d", len(resp.Rooms))
+	}
+	r := resp.Rooms[0]
+	if r.Name != "General" || r.Description != "main room" || r.Online != 2 {
+		t.Fatalf("unexpected room view: %+v", r)
+	}
+}

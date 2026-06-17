@@ -140,14 +140,31 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 type roomView struct {
-	ID         string `json:"id"`
-	Visibility string `json:"visibility"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility"`
+	Online      int    `json:"online"`
+}
+
+func (s *Server) onlineCount(ctx context.Context, room string) int {
+	members, err := s.clientCfg.presence.Snapshot(ctx, room, nowMillis()-presenceTTLms)
+	if err != nil {
+		return 0
+	}
+	return len(members)
+}
+
+func (s *Server) roomViewOf(ctx context.Context, r RoomRecord) roomView {
+	return roomView{ID: r.ID, Name: r.Name, Description: r.Description, Visibility: r.Visibility, Online: s.onlineCount(ctx, r.ID)}
 }
 
 func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID         string `json:"id"`
-		Visibility string `json:"visibility"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Visibility  string `json:"visibility"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
@@ -157,7 +174,7 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id required; visibility must be public or private", http.StatusBadRequest)
 		return
 	}
-	rec := RoomRecord{ID: body.ID, Visibility: body.Visibility}
+	rec := RoomRecord{ID: body.ID, Name: body.Name, Description: body.Description, Visibility: body.Visibility}
 	if body.Visibility == "private" {
 		rec.InviteToken = newInviteToken()
 	}
@@ -194,7 +211,7 @@ func (s *Server) handleListRooms(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]roomView, len(recs))
 	for i, rec := range recs {
-		out[i] = roomView{ID: rec.ID, Visibility: rec.Visibility}
+		out[i] = s.roomViewOf(ctx, rec)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(struct {
@@ -216,7 +233,7 @@ func (s *Server) handleGetRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(roomView{ID: rec.ID, Visibility: rec.Visibility})
+	_ = json.NewEncoder(w).Encode(s.roomViewOf(ctx, rec))
 }
 
 func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request) {

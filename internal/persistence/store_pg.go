@@ -36,7 +36,12 @@ func (s *PgxStore) Migrate(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, createMessagesTable); err != nil {
 		return err
 	}
-	_, err := s.pool.Exec(ctx, createRoomsTable)
+	if _, err := s.pool.Exec(ctx, createRoomsTable); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx,
+		`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+		 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';`)
 	return err
 }
 

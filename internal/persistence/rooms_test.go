@@ -14,7 +14,7 @@ func TestRoomStoreCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.CreateRoom(ctx, RoomRecord{ID: "team", Visibility: "private", InviteToken: "tok", CreatedMS: 1}); err != nil {
+	if err := store.CreateRoom(ctx, RoomRecord{ID: "team", Name: "Team", Description: "private team room", Visibility: "private", InviteToken: "tok", CreatedMS: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.CreateRoom(ctx, RoomRecord{ID: "team", Visibility: "private", InviteToken: "x", CreatedMS: 2}); !errors.Is(err, ErrRoomExists) {
@@ -27,6 +27,9 @@ func TestRoomStoreCRUD(t *testing.T) {
 	}
 	if got.Visibility != "private" || got.InviteToken != "tok" {
 		t.Fatalf("unexpected room: %+v", got)
+	}
+	if got.Name != "Team" || got.Description != "private team room" {
+		t.Fatalf("expected name/description round-trip, got %+v", got)
 	}
 
 	if err := store.CreateRoom(ctx, RoomRecord{ID: "lounge", Visibility: "public", CreatedMS: 3}); err != nil {

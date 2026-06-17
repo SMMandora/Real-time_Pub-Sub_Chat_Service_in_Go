@@ -64,12 +64,12 @@ func (a roomAdapter) Lookup(ctx context.Context, id string) (gateway.RoomRecord,
 	if err != nil || !found {
 		return gateway.RoomRecord{}, found, err
 	}
-	return gateway.RoomRecord{ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken}, true, nil
+	return gateway.RoomRecord{ID: r.ID, Name: r.Name, Description: r.Description, Visibility: r.Visibility, InviteToken: r.InviteToken}, true, nil
 }
 
 func (a roomAdapter) Create(ctx context.Context, r gateway.RoomRecord) error {
 	err := a.store.CreateRoom(ctx, persistence.RoomRecord{
-		ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken, CreatedMS: time.Now().UnixMilli(),
+		ID: r.ID, Name: r.Name, Description: r.Description, Visibility: r.Visibility, InviteToken: r.InviteToken, CreatedMS: time.Now().UnixMilli(),
 	})
 	if errors.Is(err, persistence.ErrRoomExists) {
 		return gateway.ErrRoomExists
@@ -84,7 +84,7 @@ func (a roomAdapter) List(ctx context.Context) ([]gateway.RoomRecord, error) {
 	}
 	out := make([]gateway.RoomRecord, len(recs))
 	for i, r := range recs {
-		out[i] = gateway.RoomRecord{ID: r.ID, Visibility: r.Visibility, InviteToken: r.InviteToken}
+		out[i] = gateway.RoomRecord{ID: r.ID, Name: r.Name, Description: r.Description, Visibility: r.Visibility, InviteToken: r.InviteToken}
 	}
 	return out, nil
 }
