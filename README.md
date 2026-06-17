@@ -41,6 +41,19 @@ Environment variables:
 - `GET /healthz` — liveness (always 200).
 - `GET /readyz` — readiness (503 while shutting down or when Redis or Postgres is unreachable).
 
+## Observability
+
+Each service exposes Prometheus metrics at `/metrics`:
+
+- gateway (`:8080/metrics`): `chat_active_connections`, `chat_messages_total`,
+  `chat_fanout_latency_seconds`.
+- worker (`:8090/metrics`): `chat_messages_persisted_total`,
+  `chat_persist_batch_size`, `chat_persist_queue_depth`.
+
+`docker compose up -d` also starts Prometheus (`:9090`, scraping the host-run
+gateway/worker) and Grafana (`:3000`, anonymous admin) with the "Chat Service"
+dashboard provisioned from `deploy/grafana/dashboards/chat.json`.
+
 ## Test
 
 ```bash
@@ -50,4 +63,5 @@ go test ./... -race
 ## Roadmap
 
 Slice 1 (done) → Redis fan-out (done) → Postgres persistence (done) →
-history + replay (done) → presence + typing (done) → auth + rate limiting (done) → observability → K8s + load test.
+history + replay (done) → presence + typing (done) → auth + rate limiting (done) →
+metrics (done) → tracing → K8s + load test.
