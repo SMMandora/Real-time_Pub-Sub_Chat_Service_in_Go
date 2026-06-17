@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -59,6 +60,10 @@ func (s *Server) Router() http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 	r.Get("/ws", s.handleWS)
 	r.Get("/api/rooms/{room}/messages", s.handleHistory)
+	r.Post("/api/rooms", s.handleCreateRoom)
+	r.Get("/api/rooms", s.handleListRooms)
+	r.Get("/api/rooms/{id}", s.handleGetRoom)
+	r.Delete("/api/rooms/{id}", s.handleDeleteRoom)
 	r.Handle("/metrics", metricsHandler())
 	r.Handle("/*", http.FileServer(http.Dir(s.webDir)))
 	return r
@@ -132,6 +137,97 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(struct {
 		Messages []StoredMessage `json:"messages"`
 	}{Messages: msgs})
+}
+
+type roomView struct {
+	ID         string `json:"id"`
+	Visibility string `json:"visibility"`
+}
+
+func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID         string `json:"id"`
+		Visibility string `json:"visibility"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || (body.Visibility != "public" && body.Visibility != "private") {
+		http.Error(w, "id required; visibility must be public or private", http.StatusBadRequest)
+		return
+	}
+	rec := RoomRecord{ID: body.ID, Visibility: body.Visibility}
+	if body.Visibility == "private" {
+		rec.InviteToken = newInviteToken()
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.rooms.Create(ctx, rec); err != nil {
+		if errors.Is(err, ErrRoomExists) {
+			http.Error(w, "room already exists", http.StatusConflict)
+			return
+		}
+		s.log.Warn("create room failed", "id", rec.ID, "err", err)
+		http.Error(w, "create failed", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(struct {
+		ID          string `json:"id"`
+		Visibility  string `json:"visibility"`
+		InviteToken string `json:"invite_token,omitempty"`
+	}{rec.ID, rec.Visibility, rec.InviteToken})
+}
+
+func (s *Server) handleListRooms(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	recs, err := s.rooms.List(ctx)
+	if err != nil {
+		s.log.Warn("list rooms failed", "err", err)
+		http.Error(w, "list failed", http.StatusServiceUnavailable)
+		return
+	}
+	out := make([]roomView, len(recs))
+	for i, rec := range recs {
+		out[i] = roomView{ID: rec.ID, Visibility: rec.Visibility}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Rooms []roomView `json:"rooms"`
+	}{Rooms: out})
+}
+
+func (s *Server) handleGetRoom(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rec, found, err := s.rooms.Lookup(ctx, id)
+	if err != nil {
+		http.Error(w, "lookup failed", http.StatusServiceUnavailable)
+		return
+	}
+	if !found {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(roomView{ID: rec.ID, Visibility: rec.Visibility})
+}
+
+func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.rooms.Delete(ctx, id); err != nil {
+		http.Error(w, "delete failed", http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {

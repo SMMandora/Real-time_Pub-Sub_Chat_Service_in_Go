@@ -245,3 +245,98 @@ func TestWSRejectsInvalidUsername(t *testing.T) {
 		t.Fatalf("expected 400 for invalid username, got %d", rec.Code)
 	}
 }
+
+func newRoomServer(rooms RoomStore) *Server {
+	bus := newFakeBus()
+	return NewServer(NewHub(bus), bus, &fakeHistory{}, newFakePresenceStore(), &fakeRateLimiter{allow: true}, rooms, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+}
+
+func TestCreateRoomPrivateReturnsToken(t *testing.T) {
+	srv := newRoomServer(newFakeRoomStore())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/rooms", strings.NewReader(`{"id":"secret","visibility":"private"}`))
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, want 201", rec.Code)
+	}
+	var resp struct {
+		ID          string `json:"id"`
+		Visibility  string `json:"visibility"`
+		InviteToken string `json:"invite_token"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.InviteToken == "" {
+		t.Fatal("expected an invite token for a private room")
+	}
+}
+
+func TestCreateRoomPublicHasNoToken(t *testing.T) {
+	srv := newRoomServer(newFakeRoomStore())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/rooms", strings.NewReader(`{"id":"lounge","visibility":"public"}`))
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d, want 201", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "invite_token") {
+		t.Fatalf("public room response should omit invite_token: %s", rec.Body.String())
+	}
+}
+
+func TestCreateRoomDuplicate409(t *testing.T) {
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "taken", Visibility: "public"})
+	srv := newRoomServer(rooms)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/rooms", strings.NewReader(`{"id":"taken","visibility":"public"}`))
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("duplicate create = %d, want 409", rec.Code)
+	}
+}
+
+func TestCreateRoomBadVisibility400(t *testing.T) {
+	srv := newRoomServer(newFakeRoomStore())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/rooms", strings.NewReader(`{"id":"x","visibility":"secret"}`))
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad visibility = %d, want 400", rec.Code)
+	}
+}
+
+func TestListRoomsOmitsTokens(t *testing.T) {
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "secret", Visibility: "private", InviteToken: "tok"})
+	srv := newRoomServer(rooms)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "tok") {
+		t.Fatalf("list must not expose invite tokens: %s", rec.Body.String())
+	}
+}
+
+func TestGetRoomNotFound404(t *testing.T) {
+	srv := newRoomServer(newFakeRoomStore())
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/ghost", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("get absent = %d, want 404", rec.Code)
+	}
+}
+
+func TestDeleteRoom204(t *testing.T) {
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "tmp", Visibility: "public"})
+	srv := newRoomServer(rooms)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/rooms/tmp", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", rec.Code)
+	}
+}
