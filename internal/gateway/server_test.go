@@ -340,3 +340,27 @@ func TestDeleteRoom204(t *testing.T) {
 		t.Fatalf("delete = %d, want 204", rec.Code)
 	}
 }
+
+func TestGetRoomReturnsMetadataWithoutToken(t *testing.T) {
+	rooms := newFakeRoomStore()
+	rooms.put(RoomRecord{ID: "secret", Visibility: "private", InviteToken: "tok"})
+	srv := newRoomServer(rooms)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/secret", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get existing = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "tok") {
+		t.Fatalf("get must not expose the invite token: %s", rec.Body.String())
+	}
+	var v struct {
+		ID         string `json:"id"`
+		Visibility string `json:"visibility"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.ID != "secret" || v.Visibility != "private" {
+		t.Fatalf("unexpected room metadata: %+v", v)
+	}
+}
