@@ -54,6 +54,12 @@ Each service exposes Prometheus metrics at `/metrics`:
 gateway/worker) and Grafana (`:3000`, anonymous admin) with the "Chat Service"
 dashboard provisioned from `deploy/grafana/dashboards/chat.json`.
 
+Distributed tracing is OpenTelemetry → Jaeger. Set
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` when running the gateway and
+worker; spans (`chat.send` → `chat.fanout` → `chat.consume`) appear in the Jaeger
+UI at http://localhost:16686. Without that env var, tracing is a no-op. Each
+service also logs `trace_id` for log correlation.
+
 ## Test
 
 ```bash
@@ -64,4 +70,4 @@ go test ./... -race
 
 Slice 1 (done) → Redis fan-out (done) → Postgres persistence (done) →
 history + replay (done) → presence + typing (done) → auth + rate limiting (done) →
-metrics (done) → tracing → K8s + load test.
+metrics + tracing (done) → K8s + load test.
