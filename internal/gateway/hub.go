@@ -89,6 +89,9 @@ func (h *Hub) Leave(roomID string, m member) {
 // the room's bus channel. The message returns via the subscription and is then
 // delivered locally, so the sender sees its own message too.
 func (h *Hub) Publish(roomID string, f Frame) error {
+	// A failed publish after a successful NextID leaves a gap in the per-room
+	// sequence (e.g. 1, 2, 4). That is intentional: IDs only need to be strictly
+	// increasing for the reconnect cursor, not gapless.
 	id, err := h.bus.NextID(context.Background(), roomID)
 	if err != nil {
 		return err

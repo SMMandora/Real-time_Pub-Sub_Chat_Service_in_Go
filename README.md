@@ -1,8 +1,8 @@
 # Real-time Chat Service
 
-Horizontally scalable real-time chat, built in slices. Through **slice 2**:
-multiple stateless WebSocket gateway replicas that fan messages out to each
-other via Redis pub/sub.
+Horizontally scalable real-time chat, built in slices. Through **slice 3a**:
+multiple stateless WebSocket gateway replicas fan messages out via Redis
+pub/sub, and a worker persists every message to Postgres.
 
 ## Run
 
