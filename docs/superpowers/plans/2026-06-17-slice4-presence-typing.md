@@ -94,15 +94,20 @@ func TestRedisPresenceAddSnapshotRemove(t *testing.T) {
 		t.Fatalf("expected [b], got %v", got)
 	}
 
+	if err := ps.Remove(ctx, "x", "a"); err != nil {
+		t.Fatal(err)
+	}
 	if err := ps.Remove(ctx, "x", "b"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = ps.Snapshot(ctx, "x", 0)
 	if len(got) != 0 {
-		t.Fatalf("expected empty after remove, got %v", got)
+		t.Fatalf("expected empty after removing both, got %v", got)
 	}
 }
 ```
+
+> **Note:** adding `Members []string` makes `Frame` non-comparable, so the existing `protocol_test.go` (`TestFrameConstructors`, `TestFrameRoundTrip`) must switch their `!=` Frame comparisons to `reflect.DeepEqual` (add the `reflect` import) and be included in this task's commit.
 
 - [ ] **Step 2: Run to verify red**
 
