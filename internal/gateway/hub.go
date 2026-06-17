@@ -3,6 +3,8 @@ package gateway
 import (
 	"context"
 	"sync"
+
+	"github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go/internal/tracing"
 )
 
 // Hub is a registry of rooms and connected clients, fronting a Bus for
@@ -36,7 +38,15 @@ func (h *Hub) onBusMessage(channel string, payload []byte) {
 	if f.Type == TypeMessage && f.TS > 0 {
 		FanoutLatencySeconds.Observe(float64(nowMillis()-f.TS) / 1000)
 	}
-	h.deliverLocal(roomFromChannel(channel), f)
+	room := roomFromChannel(channel)
+	if f.Type == TypeMessage {
+		ctx := tracing.Extract(context.Background(), f.Trace)
+		_, span := tracing.Tracer().Start(ctx, "chat.fanout")
+		h.deliverLocal(room, f)
+		span.End()
+		return
+	}
+	h.deliverLocal(room, f)
 }
 
 // Register/Unregister track every connected client so CloseAll can reach

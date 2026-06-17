@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"nhooyr.io/websocket"
+
+	"github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go/internal/tracing"
 )
 
 // replayLimit caps how many history messages are replayed to a joining client.
@@ -139,7 +141,14 @@ func (c *Client) handleFrame(f Frame) {
 			c.enqueue(errorFrame("rate limit exceeded"))
 			return
 		}
-		if err := c.hub.Publish(f.Room, messageFrame(f.Room, c.username, f.Text, nowMillis())); err != nil {
+		ctx, span := tracing.Tracer().Start(c.ctx, "chat.send")
+		msg := messageFrame(f.Room, c.username, f.Text, nowMillis())
+		msg.Trace = tracing.Inject(ctx)
+		c.log.Info("message sent", "user", c.username, "room", f.Room,
+			"trace_id", span.SpanContext().TraceID().String())
+		err := c.hub.Publish(f.Room, msg)
+		span.End()
+		if err != nil {
 			c.enqueue(errorFrame("failed to send message"))
 		}
 	case TypeTyping:

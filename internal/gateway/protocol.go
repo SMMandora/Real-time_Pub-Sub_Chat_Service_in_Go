@@ -14,6 +14,7 @@ type Frame struct {
 	Event   string   `json:"event,omitempty"`
 	Message string   `json:"message,omitempty"`
 	Members []string `json:"members,omitempty"`
+	Trace   string   `json:"trace,omitempty"`
 }
 
 const (
