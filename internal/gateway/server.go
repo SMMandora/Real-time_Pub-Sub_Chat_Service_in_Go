@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -29,27 +30,42 @@ type Server struct {
 	bus       pinger
 	hist      history
 	rooms     RoomStore
+	members   MemberStore
 	log       *slog.Logger
 	webDir    string
 	clientCfg clientConfig
 	draining  atomic.Bool
 }
 
-func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, limiter RateLimiter, rooms RoomStore, log *slog.Logger, webDir string) *Server {
+type ServerConfig struct {
+	Hub      *Hub
+	Bus      pinger
+	History  history
+	Presence PresenceStore
+	Limiter  RateLimiter
+	Rooms    RoomStore
+	Members  MemberStore
+	Log      *slog.Logger
+	WebDir   string
+}
+
+func NewServer(cfg ServerConfig) *Server {
 	return &Server{
-		hub:    hub,
-		bus:    bus,
-		hist:   hist,
-		rooms:  rooms,
-		log:    log,
-		webDir: webDir,
+		hub:     cfg.Hub,
+		bus:     cfg.Bus,
+		hist:    cfg.History,
+		rooms:   cfg.Rooms,
+		members: cfg.Members,
+		log:     cfg.Log,
+		webDir:  cfg.WebDir,
 		clientCfg: clientConfig{
-			hub:      hub,
-			history:  hist,
-			presence: presence,
-			limiter:  limiter,
-			rooms:    rooms,
-			log:      log,
+			hub:      cfg.Hub,
+			history:  cfg.History,
+			presence: cfg.Presence,
+			limiter:  cfg.Limiter,
+			rooms:    cfg.Rooms,
+			members:  cfg.Members,
+			log:      cfg.Log,
 		},
 	}
 }
@@ -63,6 +79,7 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/rooms", s.handleCreateRoom)
 	r.Get("/api/rooms", s.handleListRooms)
 	r.Get("/api/rooms/{id}", s.handleGetRoom)
+	r.Get("/api/rooms/{room}/members", s.handleRoomMembers)
 	r.Delete("/api/rooms/{id}", s.handleDeleteRoom)
 	r.Handle("/metrics", metricsHandler())
 	r.Handle("/*", http.FileServer(http.Dir(s.webDir)))
@@ -234,6 +251,55 @@ func (s *Server) handleGetRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.roomViewOf(ctx, rec))
+}
+
+func (s *Server) handleRoomMembers(w http.ResponseWriter, r *http.Request) {
+	room := chi.URLParam(r, "room")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	now := nowMillis()
+	onlineList, err := s.clientCfg.presence.Snapshot(ctx, room, now-presenceTTLms)
+	if err != nil {
+		http.Error(w, "members unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	online := make(map[string]bool, len(onlineList))
+	for _, u := range onlineList {
+		online[u] = true
+	}
+	members, err := s.members.List(ctx, room)
+	if err != nil {
+		http.Error(w, "members unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	type memberView struct {
+		Username string `json:"username"`
+		Status   string `json:"status"`
+	}
+	rank := map[string]int{"online": 0, "away": 1, "offline": 2}
+	out := make([]memberView, 0, len(members))
+	for _, m := range members {
+		status := "offline"
+		if online[m.Username] {
+			status = "online"
+		} else if now-m.LastSeenMs <= awayWindowMs {
+			status = "away"
+		}
+		out = append(out, memberView{Username: m.Username, Status: status})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if rank[out[i].Status] != rank[out[j].Status] {
+			return rank[out[i].Status] < rank[out[j].Status]
+		}
+		return out[i].Username < out[j].Username
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Members []memberView `json:"members"`
+	}{Members: out})
 }
 
 func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request) {

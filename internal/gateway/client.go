@@ -34,6 +34,7 @@ type clientConfig struct {
 	presence PresenceStore
 	limiter  RateLimiter
 	rooms    RoomStore
+	members  MemberStore
 	log      *slog.Logger
 }
 
@@ -48,6 +49,7 @@ type Client struct {
 	presence    PresenceStore
 	limiter     RateLimiter
 	rooms       RoomStore
+	members     MemberStore
 	hbInterval  time.Duration
 	log         *slog.Logger
 	send        chan Frame
@@ -79,6 +81,7 @@ func newClient(ctx context.Context, username string, cfg clientConfig, cancel co
 		presence:   cfg.presence,
 		limiter:    cfg.limiter,
 		rooms:      cfg.rooms,
+		members:    cfg.members,
 		hbInterval: heartbeatInterval,
 		log:        cfg.log,
 		send:       make(chan Frame, 16),
@@ -125,6 +128,7 @@ func (c *Client) handleFrame(f Frame) {
 			// and live messages may overlap harmlessly.
 			go c.replay(f.Room, f.ID)
 			c.addPresence(f.Room)
+			c.touchMember(f.Room)
 		}
 	case TypeLeave:
 		c.mu.Lock()
@@ -134,6 +138,7 @@ func (c *Client) handleFrame(f Frame) {
 		if was {
 			c.hub.Leave(f.Room, c)
 			c.removePresence(f.Room)
+			c.touchMember(f.Room)
 		}
 	case TypeSend:
 		c.mu.Lock()
@@ -224,6 +229,14 @@ func (c *Client) replay(room string, sinceID int64) {
 	}
 }
 
+func (c *Client) touchMember(room string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := c.members.Touch(ctx, room, c.username, nowMillis()); err != nil {
+		c.log.Warn("member touch failed", "room", room, "err", err)
+	}
+}
+
 // addPresence records this client in the room's presence set and broadcasts the
 // updated snapshot. Synchronous: join/leave are infrequent and the Redis calls
 // are small. Uses a background context so it also works during teardown.
@@ -273,6 +286,7 @@ func (c *Client) heartbeat() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			for _, room := range rooms {
 				_ = c.presence.Add(ctx, room, c.username, nowMillis())
+				_ = c.members.Touch(ctx, room, c.username, nowMillis())
 			}
 			cancel()
 		}
@@ -290,6 +304,7 @@ func (c *Client) leaveAll() {
 	for _, room := range rooms {
 		c.hub.Leave(room, c)
 		c.removePresence(room)
+		c.touchMember(room)
 	}
 }
 

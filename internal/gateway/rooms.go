@@ -28,6 +28,18 @@ type RoomStore interface {
 	Delete(ctx context.Context, id string) error
 }
 
+const awayWindowMs int64 = 300000 // 5 minutes
+
+type MemberRecord struct {
+	Username   string
+	LastSeenMs int64
+}
+
+type MemberStore interface {
+	Touch(ctx context.Context, room, username string, lastSeenMs int64) error
+	List(ctx context.Context, room string) ([]MemberRecord, error)
+}
+
 func newInviteToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)

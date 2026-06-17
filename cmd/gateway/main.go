@@ -93,6 +93,26 @@ func (a roomAdapter) Delete(ctx context.Context, id string) error {
 	return a.store.DeleteRoom(ctx, id)
 }
 
+type memberAdapter struct {
+	store *persistence.PgxStore
+}
+
+func (a memberAdapter) Touch(ctx context.Context, room, username string, lastSeenMs int64) error {
+	return a.store.TouchMember(ctx, room, username, lastSeenMs)
+}
+
+func (a memberAdapter) List(ctx context.Context, room string) ([]gateway.MemberRecord, error) {
+	recs, err := a.store.ListMembers(ctx, room)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.MemberRecord, len(recs))
+	for i, r := range recs {
+		out[i] = gateway.MemberRecord{Username: r.Username, LastSeenMs: r.LastSeenMs}
+	}
+	return out, nil
+}
+
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -145,7 +165,10 @@ func main() {
 	defer presence.Close()
 	limiter := gateway.NewRedisRateLimiter(redisAddr, 30, 0.5)
 	defer limiter.Close()
-	srv := gateway.NewServer(hub, bus, hist, presence, limiter, rooms, log, webDir)
+	srv := gateway.NewServer(gateway.ServerConfig{
+		Hub: hub, Bus: bus, History: hist, Presence: presence, Limiter: limiter,
+		Rooms: rooms, Members: memberAdapter{store: store}, Log: log, WebDir: webDir,
+	})
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

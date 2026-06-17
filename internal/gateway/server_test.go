@@ -38,8 +38,12 @@ func TestParseLimitClampsAndDefaults(t *testing.T) {
 
 func newTestServer() *Server {
 	bus := newFakeBus()
-	hub := NewHub(bus)
-	return NewServer(hub, bus, &fakeHistory{}, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	return NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{},
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 }
 
 func TestHealthzAlwaysOK(t *testing.T) {
@@ -146,8 +150,12 @@ func TestMalformedJSONReturnsError(t *testing.T) {
 func TestReadyzFailsWhenRedisDown(t *testing.T) {
 	bus := newFakeBus()
 	bus.pingErr = errors.New("redis down")
-	hub := NewHub(bus)
-	srv := NewServer(hub, bus, &fakeHistory{}, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{},
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -159,7 +167,12 @@ func TestReadyzFailsWhenRedisDown(t *testing.T) {
 func TestReadyzFailsWhenPostgresDown(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{pingErr: errors.New("pg down")}
-	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: hist,
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -174,7 +187,12 @@ func TestHistoryEndpointReturnsMessages(t *testing.T) {
 		{ID: 1, From: "u", Text: "a", TS: 1},
 		{ID: 2, From: "u", Text: "b", TS: 2},
 	}}
-	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: hist,
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))
@@ -195,7 +213,12 @@ func TestHistoryEndpointReturnsMessages(t *testing.T) {
 func TestHistoryEndpointBeforeParam(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{before: []StoredMessage{{ID: 5, From: "u", Text: "e", TS: 5}}}
-	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: hist,
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages?before=10", nil))
@@ -210,7 +233,12 @@ func TestHistoryEndpointBeforeParam(t *testing.T) {
 func TestHistoryEndpointStoreErrorReturns503(t *testing.T) {
 	bus := newFakeBus()
 	hist := &fakeHistory{err: errors.New("down")}
-	srv := NewServer(NewHub(bus), bus, hist, newFakePresenceStore(), &fakeRateLimiter{allow: true}, newFakeRoomStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: hist,
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: newFakeRoomStore(), Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/x/messages", nil))
@@ -248,7 +276,12 @@ func TestWSRejectsInvalidUsername(t *testing.T) {
 
 func newRoomServer(rooms RoomStore) *Server {
 	bus := newFakeBus()
-	return NewServer(NewHub(bus), bus, &fakeHistory{}, newFakePresenceStore(), &fakeRateLimiter{allow: true}, rooms, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	return NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{},
+		Presence: newFakePresenceStore(), Limiter: &fakeRateLimiter{allow: true},
+		Rooms: rooms, Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 }
 
 func TestCreateRoomPrivateReturnsToken(t *testing.T) {
@@ -372,7 +405,11 @@ func TestListRoomsIncludesMetadataAndOnlineCount(t *testing.T) {
 	ps.Add(context.Background(), "general", "bob", nowMillis())
 	rooms := newFakeRoomStore()
 	rooms.put(RoomRecord{ID: "general", Name: "General", Description: "main room", Visibility: "public"})
-	srv := NewServer(NewHub(bus), bus, &fakeHistory{}, ps, &fakeRateLimiter{allow: true}, rooms, slog.New(slog.NewTextHandler(io.Discard, nil)), "web")
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{}, Presence: ps,
+		Limiter: &fakeRateLimiter{allow: true}, Rooms: rooms, Members: newFakeMemberStore(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
 
 	rec := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms", nil))
@@ -397,5 +434,46 @@ func TestListRoomsIncludesMetadataAndOnlineCount(t *testing.T) {
 	r := resp.Rooms[0]
 	if r.Name != "General" || r.Description != "main room" || r.Online != 2 {
 		t.Fatalf("unexpected room view: %+v", r)
+	}
+}
+
+func TestRoomMembersStatus(t *testing.T) {
+	bus := newFakeBus()
+	ps := newFakePresenceStore()
+	ps.Add(context.Background(), "general", "online_user", nowMillis())
+	ms := newFakeMemberStore()
+	now := nowMillis()
+	ms.put("general", MemberRecord{Username: "online_user", LastSeenMs: now})
+	ms.put("general", MemberRecord{Username: "away_user", LastSeenMs: now - 60000})
+	ms.put("general", MemberRecord{Username: "offline_user", LastSeenMs: now - 600000})
+	srv := NewServer(ServerConfig{
+		Hub: NewHub(bus), Bus: bus, History: &fakeHistory{}, Presence: ps,
+		Limiter: &fakeRateLimiter{allow: true}, Rooms: newFakeRoomStore(), Members: ms,
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: "web",
+	})
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/rooms/general/members", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("members = %d, want 200", rec.Code)
+	}
+	var resp struct {
+		Members []struct {
+			Username string `json:"username"`
+			Status   string `json:"status"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range resp.Members {
+		got[m.Username] = m.Status
+	}
+	if got["online_user"] != "online" || got["away_user"] != "away" || got["offline_user"] != "offline" {
+		t.Fatalf("unexpected statuses: %+v", resp.Members)
+	}
+	if resp.Members[0].Status != "online" || resp.Members[len(resp.Members)-1].Status != "offline" {
+		t.Fatalf("expected online-first/offline-last ordering: %+v", resp.Members)
 	}
 }

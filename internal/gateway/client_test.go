@@ -49,6 +49,7 @@ func newTestClient(reg roomRegistry, hist history, cancel context.CancelFunc) *C
 		presence: newFakePresenceStore(),
 		limiter:  &fakeRateLimiter{allow: true},
 		rooms:    newFakeRoomStore(),
+		members:  newFakeMemberStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(context.Background(), "tester", cfg, cancel)
@@ -61,6 +62,7 @@ func newPresenceClient(ctx context.Context, reg roomRegistry, ps PresenceStore, 
 		presence: ps,
 		limiter:  &fakeRateLimiter{allow: true},
 		rooms:    newFakeRoomStore(),
+		members:  newFakeMemberStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(ctx, "tester", cfg, cancel)
@@ -73,6 +75,7 @@ func newRateClient(reg roomRegistry, limiter RateLimiter) *Client {
 		presence: newFakePresenceStore(),
 		limiter:  limiter,
 		rooms:    newFakeRoomStore(),
+		members:  newFakeMemberStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(context.Background(), "alice", cfg, func() {})
@@ -85,6 +88,7 @@ func newJoinGateClient(reg roomRegistry, rooms RoomStore) *Client {
 		presence: newFakePresenceStore(),
 		limiter:  &fakeRateLimiter{allow: true},
 		rooms:    rooms,
+		members:  newFakeMemberStore(),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return newClient(context.Background(), "tester", cfg, func() {})
@@ -422,5 +426,20 @@ func TestJoinLookupErrorFailsClosed(t *testing.T) {
 
 	if len(reg.joined) != 0 {
 		t.Fatal("a lookup error must fail closed (no join)")
+	}
+}
+
+func TestJoinTouchesMembership(t *testing.T) {
+	reg := &fakeRegistry{}
+	ms := newFakeMemberStore()
+	cfg := clientConfig{
+		hub: reg, history: &fakeHistory{}, presence: newFakePresenceStore(),
+		limiter: &fakeRateLimiter{allow: true}, rooms: newFakeRoomStore(), members: ms,
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	c := newClient(context.Background(), "tester", cfg, func() {})
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	if ms.touchedCount() == 0 {
+		t.Fatal("expected join to touch membership")
 	}
 }
