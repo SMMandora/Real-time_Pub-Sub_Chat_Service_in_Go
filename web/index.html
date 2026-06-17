@@ -17,6 +17,7 @@
   <h1>Chat demo</h1>
   <div class="row">
     <input id="room" value="general" placeholder="room" />
+    <input id="token" placeholder="invite token (private)" />
     <button id="join">Join</button>
     <span id="status">disconnected</span>
   </div>
@@ -76,7 +77,8 @@
       if (!ws || ws.readyState !== WebSocket.OPEN) connect();
       const tryJoin = () => {
         room = document.getElementById("room").value.trim();
-        ws.send(JSON.stringify({ type: "join", room }));
+        const token = document.getElementById("token").value.trim();
+        ws.send(JSON.stringify({ type: "join", room, token }));
         add(`joining ${room}…`, "sys");
       };
       if (ws.readyState === WebSocket.OPEN) tryJoin();

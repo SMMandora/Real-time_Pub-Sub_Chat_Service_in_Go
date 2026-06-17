@@ -50,6 +50,12 @@ Environment variables:
   (`{"messages":[{"id","from","text","ts"}]}`); `limit` default 100 (max 200),
   `before` returns messages with id < before. Joining a room also replays the
   last 100 messages (or messages after the `id` sent on the JOIN frame).
+- `POST /api/rooms` — create a room. Body `{"id":"...","visibility":"public|private"}`;
+  a private room returns `{"id","visibility","invite_token"}` (join private rooms
+  by sending that token in the JOIN frame's `token` field). Duplicate id → 409.
+- `GET /api/rooms` — list registered rooms (`{"rooms":[{"id","visibility"}]}`,
+  never tokens). `GET /api/rooms/{id}` — room metadata or 404.
+  `DELETE /api/rooms/{id}` — remove a room (204).
 - `GET /healthz` — liveness (always 200).
 - `GET /readyz` — readiness (503 while shutting down or when Redis or Postgres is unreachable).
 
