@@ -43,7 +43,36 @@ func drain(c *Client) []Frame {
 }
 
 func newTestClient(reg roomRegistry, hist history, cancel context.CancelFunc) *Client {
-	return newClient(context.Background(), reg, hist, newFakePresenceStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), cancel)
+	cfg := clientConfig{
+		hub:      reg,
+		history:  hist,
+		presence: newFakePresenceStore(),
+		limiter:  &fakeRateLimiter{allow: true},
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	return newClient(context.Background(), "tester", cfg, cancel)
+}
+
+func newPresenceClient(ctx context.Context, reg roomRegistry, ps PresenceStore, cancel context.CancelFunc) *Client {
+	cfg := clientConfig{
+		hub:      reg,
+		history:  &fakeHistory{},
+		presence: ps,
+		limiter:  &fakeRateLimiter{allow: true},
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	return newClient(ctx, "tester", cfg, cancel)
+}
+
+func newRateClient(reg roomRegistry, limiter RateLimiter) *Client {
+	cfg := clientConfig{
+		hub:      reg,
+		history:  &fakeHistory{},
+		presence: newFakePresenceStore(),
+		limiter:  limiter,
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	return newClient(context.Background(), "alice", cfg, func() {})
 }
 
 func waitForFrames(t *testing.T, c *Client, n int) []Frame {
@@ -97,7 +126,7 @@ func TestHandleJoinThenSend(t *testing.T) {
 		t.Fatalf("expected one broadcast, got %+v", reg.published)
 	}
 	got := reg.published[0]
-	if got.Type != TypeMessage || got.From != c.ID() || got.Text != "hi" || got.TS == 0 {
+	if got.Type != TypeMessage || got.From != c.username || got.Text != "hi" || got.TS == 0 {
 		t.Fatalf("unexpected broadcast frame: %+v", got)
 	}
 }
@@ -207,7 +236,7 @@ func TestJoinReplayErrorEnqueuesNothing(t *testing.T) {
 func TestJoinAddsPresenceAndBroadcastsSnapshot(t *testing.T) {
 	reg := &fakeRegistry{}
 	ps := newFakePresenceStore()
-	c := newClient(context.Background(), reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), func() {})
+	c := newPresenceClient(context.Background(), reg, ps, func() {})
 
 	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
 
@@ -217,7 +246,7 @@ func TestJoinAddsPresenceAndBroadcastsSnapshot(t *testing.T) {
 	if len(reg.presence) != 1 || reg.presence[0].Type != TypePresence || reg.presence[0].Room != "x" {
 		t.Fatalf("expected one presence snapshot frame, got %+v", reg.presence)
 	}
-	if len(reg.presence[0].Members) != 1 || reg.presence[0].Members[0] != c.ID() {
+	if len(reg.presence[0].Members) != 1 || reg.presence[0].Members[0] != c.username {
 		t.Fatalf("expected snapshot to contain joiner, got %+v", reg.presence[0].Members)
 	}
 }
@@ -225,7 +254,7 @@ func TestJoinAddsPresenceAndBroadcastsSnapshot(t *testing.T) {
 func TestLeaveRemovesPresenceAndBroadcasts(t *testing.T) {
 	reg := &fakeRegistry{}
 	ps := newFakePresenceStore()
-	c := newClient(context.Background(), reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), func() {})
+	c := newPresenceClient(context.Background(), reg, ps, func() {})
 
 	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
 	c.handleFrame(Frame{Type: TypeLeave, Room: "x"})
@@ -250,8 +279,8 @@ func TestTypingPublishesTypingFrame(t *testing.T) {
 			typing = &reg.presence[i]
 		}
 	}
-	if typing == nil || typing.Room != "x" || typing.From != c.ID() {
-		t.Fatalf("expected a typing frame from %s in room x, got %+v", c.ID(), reg.presence)
+	if typing == nil || typing.Room != "x" || typing.From != c.username {
+		t.Fatalf("expected a typing frame from %s in room x, got %+v", c.username, reg.presence)
 	}
 }
 
@@ -273,7 +302,7 @@ func TestHeartbeatRefreshesPresence(t *testing.T) {
 	ps := newFakePresenceStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	c := newClient(ctx, reg, &fakeHistory{}, ps, slog.New(slog.NewTextHandler(io.Discard, nil)), cancel)
+	c := newPresenceClient(ctx, reg, ps, cancel)
 	c.hbInterval = 10 * time.Millisecond
 
 	c.mu.Lock()
@@ -290,4 +319,41 @@ func TestHeartbeatRefreshesPresence(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("expected heartbeat to call Add repeatedly, got %d", ps.addCallCount())
+}
+
+func TestSendBlockedByRateLimit(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newRateClient(reg, &fakeRateLimiter{allow: false})
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	c.handleFrame(Frame{Type: TypeSend, Room: "x", Text: "hi"})
+
+	if len(reg.published) != 0 {
+		t.Fatalf("rate-limited send must not publish, got %+v", reg.published)
+	}
+	out := drain(c)
+	if len(out) != 1 || out[0].Type != TypeError {
+		t.Fatalf("expected one rate-limit error frame, got %+v", out)
+	}
+}
+
+func TestSendAllowedByRateLimit(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newRateClient(reg, &fakeRateLimiter{allow: true})
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	c.handleFrame(Frame{Type: TypeSend, Room: "x", Text: "hi"})
+
+	if len(reg.published) != 1 || reg.published[0].From != "alice" {
+		t.Fatalf("expected one published message from alice, got %+v", reg.published)
+	}
+}
+
+func TestSendFailsOpenOnLimiterError(t *testing.T) {
+	reg := &fakeRegistry{}
+	c := newRateClient(reg, &fakeRateLimiter{allow: false, err: errors.New("redis down")})
+	c.handleFrame(Frame{Type: TypeJoin, Room: "x"})
+	c.handleFrame(Frame{Type: TypeSend, Room: "x", Text: "hi"})
+
+	if len(reg.published) != 1 {
+		t.Fatalf("a limiter error should fail open and publish, got %+v", reg.published)
+	}
 }

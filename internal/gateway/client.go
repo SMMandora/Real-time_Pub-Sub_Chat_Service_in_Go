@@ -24,14 +24,26 @@ type roomRegistry interface {
 	PublishPresence(roomID string, f Frame) error
 }
 
+// clientConfig groups the stable per-connection dependencies so newClient does
+// not grow an unwieldy parameter list.
+type clientConfig struct {
+	hub      roomRegistry
+	history  history
+	presence PresenceStore
+	limiter  RateLimiter
+	log      *slog.Logger
+}
+
 // Client is one WebSocket connection. enqueue feeds the bounded send channel
 // that writePump drains; overflow drops the client by cancelling its context.
 type Client struct {
 	id          string
+	username    string
 	ctx         context.Context
 	hub         roomRegistry
 	history     history
 	presence    PresenceStore
+	limiter     RateLimiter
 	hbInterval  time.Duration
 	log         *slog.Logger
 	send        chan Frame
@@ -53,15 +65,17 @@ func nowMillis() int64 {
 	return time.Now().UnixMilli()
 }
 
-func newClient(ctx context.Context, hub roomRegistry, hist history, presence PresenceStore, log *slog.Logger, cancel context.CancelFunc) *Client {
+func newClient(ctx context.Context, username string, cfg clientConfig, cancel context.CancelFunc) *Client {
 	return &Client{
 		id:         newID(),
+		username:   username,
 		ctx:        ctx,
-		hub:        hub,
-		history:    hist,
-		presence:   presence,
+		hub:        cfg.hub,
+		history:    cfg.history,
+		presence:   cfg.presence,
+		limiter:    cfg.limiter,
 		hbInterval: heartbeatInterval,
-		log:        log,
+		log:        cfg.log,
 		send:       make(chan Frame, 16),
 		cancel:     cancel,
 		joined:     make(map[string]bool),
@@ -121,7 +135,11 @@ func (c *Client) handleFrame(f Frame) {
 			c.enqueue(errorFrame(fmt.Sprintf("not joined to room %q", f.Room)))
 			return
 		}
-		if err := c.hub.Publish(f.Room, messageFrame(f.Room, c.id, f.Text, nowMillis())); err != nil {
+		if !c.allowSend() {
+			c.enqueue(errorFrame("rate limit exceeded"))
+			return
+		}
+		if err := c.hub.Publish(f.Room, messageFrame(f.Room, c.username, f.Text, nowMillis())); err != nil {
 			c.enqueue(errorFrame("failed to send message"))
 		}
 	case TypeTyping:
@@ -129,11 +147,24 @@ func (c *Client) handleFrame(f Frame) {
 		joined := c.joined[f.Room]
 		c.mu.Unlock()
 		if joined {
-			_ = c.hub.PublishPresence(f.Room, typingFrame(f.Room, c.id))
+			_ = c.hub.PublishPresence(f.Room, typingFrame(f.Room, c.username))
 		}
 	default:
 		c.enqueue(errorFrame("unknown frame type"))
 	}
+}
+
+// allowSend consults the rate limiter. On a limiter error it fails open
+// (allows) so a Redis blip does not block all chat.
+func (c *Client) allowSend() bool {
+	ctx, cancel := context.WithTimeout(c.ctx, 2*time.Second)
+	defer cancel()
+	allowed, err := c.limiter.Allow(ctx, c.username)
+	if err != nil {
+		c.log.Warn("rate limit check failed", "user", c.username, "err", err)
+		return true
+	}
+	return allowed
 }
 
 // replay fetches recent history (or messages after sinceID) and enqueues them
@@ -164,7 +195,7 @@ func (c *Client) replay(room string, sinceID int64) {
 func (c *Client) addPresence(room string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := c.presence.Add(ctx, room, c.id, nowMillis()); err != nil {
+	if err := c.presence.Add(ctx, room, c.username, nowMillis()); err != nil {
 		c.log.Warn("presence add failed", "room", room, "err", err)
 		return
 	}
@@ -174,7 +205,7 @@ func (c *Client) addPresence(room string) {
 func (c *Client) removePresence(room string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_ = c.presence.Remove(ctx, room, c.id)
+	_ = c.presence.Remove(ctx, room, c.username)
 	c.publishSnapshot(ctx, room)
 }
 
@@ -206,7 +237,7 @@ func (c *Client) heartbeat() {
 			c.mu.Unlock()
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			for _, room := range rooms {
-				_ = c.presence.Add(ctx, room, c.id, nowMillis())
+				_ = c.presence.Add(ctx, room, c.username, nowMillis())
 			}
 			cancel()
 		}

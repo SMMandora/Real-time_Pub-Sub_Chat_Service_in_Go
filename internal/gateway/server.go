@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -18,18 +19,35 @@ type pinger interface {
 	Ping(ctx context.Context) error
 }
 
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+func validUsername(s string) bool { return usernamePattern.MatchString(s) }
+
 type Server struct {
-	hub      *Hub
-	bus      pinger
-	hist     history
-	presence PresenceStore
-	log      *slog.Logger
-	webDir   string
-	draining atomic.Bool
+	hub       *Hub
+	bus       pinger
+	hist      history
+	log       *slog.Logger
+	webDir    string
+	clientCfg clientConfig
+	draining  atomic.Bool
 }
 
-func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, log *slog.Logger, webDir string) *Server {
-	return &Server{hub: hub, bus: bus, hist: hist, presence: presence, log: log, webDir: webDir}
+func NewServer(hub *Hub, bus pinger, hist history, presence PresenceStore, limiter RateLimiter, log *slog.Logger, webDir string) *Server {
+	return &Server{
+		hub:    hub,
+		bus:    bus,
+		hist:   hist,
+		log:    log,
+		webDir: webDir,
+		clientCfg: clientConfig{
+			hub:      hub,
+			history:  hist,
+			presence: presence,
+			limiter:  limiter,
+			log:      log,
+		},
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -113,6 +131,12 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	username := r.URL.Query().Get("username")
+	if !validUsername(username) {
+		http.Error(w, "invalid username", http.StatusBadRequest)
+		return
+	}
+
 	// InsecureSkipVerify allows the local demo page to connect during dev.
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
@@ -123,9 +147,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	client := newClient(ctx, s.hub, s.hist, s.presence, s.log, cancel)
+	client := newClient(ctx, username, s.clientCfg, cancel)
 	s.hub.Register(client)
-	s.log.Info("client connected", "id", client.ID())
+	s.log.Info("client connected", "id", client.ID(), "user", username)
 	go client.heartbeat()
 
 	defer func() {

@@ -91,7 +91,9 @@ func main() {
 	hub := gateway.NewHub(bus)
 	presence := gateway.NewRedisPresenceStore(redisAddr)
 	defer presence.Close()
-	srv := gateway.NewServer(hub, bus, hist, presence, log, webDir)
+	limiter := gateway.NewRedisRateLimiter(redisAddr, 30, 0.5)
+	defer limiter.Close()
+	srv := gateway.NewServer(hub, bus, hist, presence, limiter, log, webDir)
 	httpServer := &http.Server{Addr: addr, Handler: srv.Router()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
