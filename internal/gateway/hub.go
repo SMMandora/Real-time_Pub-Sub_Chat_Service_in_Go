@@ -89,6 +89,11 @@ func (h *Hub) Leave(roomID string, m member) {
 // the room's bus channel. The message returns via the subscription and is then
 // delivered locally, so the sender sees its own message too.
 func (h *Hub) Publish(roomID string, f Frame) error {
+	id, err := h.bus.NextID(context.Background(), roomID)
+	if err != nil {
+		return err
+	}
+	f.ID = id
 	payload, err := f.encode()
 	if err != nil {
 		return err

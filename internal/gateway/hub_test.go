@@ -1,6 +1,9 @@
 package gateway
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestHubLazyCreateAndReapAndSubscribe(t *testing.T) {
 	bus := newFakeBus()
@@ -84,5 +87,25 @@ func TestHubCloseAllClosesRegisteredClients(t *testing.T) {
 
 	if a.closed != "bye" || b.closed != "bye" {
 		t.Fatalf("expected both closed with reason, got a=%q b=%q", a.closed, b.closed)
+	}
+}
+
+func TestHubPublishStampsIncreasingID(t *testing.T) {
+	bus := newFakeBus()
+	h := NewHub(bus)
+	h.Join("general", &fakeMember{id: "a"})
+
+	_ = h.Publish("general", messageFrame("general", "a", "one", 1))
+	_ = h.Publish("general", messageFrame("general", "a", "two", 1))
+
+	payloads := bus.publishedFrames()
+	if len(payloads) != 2 {
+		t.Fatalf("expected 2 published frames, got %d", len(payloads))
+	}
+	var f1, f2 Frame
+	_ = json.Unmarshal(payloads[0], &f1)
+	_ = json.Unmarshal(payloads[1], &f2)
+	if f1.ID != 1 || f2.ID != 2 {
+		t.Fatalf("expected stamped ids 1,2, got %d,%d", f1.ID, f2.ID)
 	}
 }

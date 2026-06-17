@@ -15,6 +15,7 @@ type fakeBus struct {
 	published  []busMsg
 	subCount   int
 	pingErr    error
+	seq        map[string]int64
 }
 
 type busMsg struct {
@@ -23,7 +24,7 @@ type busMsg struct {
 }
 
 func newFakeBus() *fakeBus {
-	return &fakeBus{subscribed: make(map[string]bool)}
+	return &fakeBus{subscribed: make(map[string]bool), seq: make(map[string]int64)}
 }
 
 func (b *fakeBus) Publish(_ context.Context, channel string, payload []byte) error {
@@ -61,6 +62,23 @@ func (b *fakeBus) SetHandler(h func(channel string, payload []byte)) {
 
 func (b *fakeBus) Ping(_ context.Context) error { return b.pingErr }
 func (b *fakeBus) Close() error                 { return nil }
+
+func (b *fakeBus) NextID(_ context.Context, room string) (int64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.seq[room]++
+	return b.seq[room], nil
+}
+
+func (b *fakeBus) publishedFrames() [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([][]byte, len(b.published))
+	for i, m := range b.published {
+		out[i] = m.payload
+	}
+	return out
+}
 
 func (b *fakeBus) isSubscribed(channel string) bool {
 	b.mu.Lock()

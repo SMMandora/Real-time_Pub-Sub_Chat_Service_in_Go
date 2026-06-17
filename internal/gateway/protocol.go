@@ -7,6 +7,7 @@ import "encoding/json"
 type Frame struct {
 	Type    string `json:"type"`
 	Room    string `json:"room,omitempty"`
+	ID      int64  `json:"id,omitempty"`
 	Text    string `json:"text,omitempty"`
 	From    string `json:"from,omitempty"`
 	TS      int64  `json:"ts,omitempty"`

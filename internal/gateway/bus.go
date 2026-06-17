@@ -20,12 +20,15 @@ func roomFromChannel(channel string) string {
 	return strings.TrimPrefix(channel, roomChannelPrefix)
 }
 
+func seqKey(room string) string { return "seq:" + room }
+
 // Bus is the cross-gateway message transport. A payload published to a channel
 // is delivered to every gateway subscribed to that channel.
 type Bus interface {
 	Publish(ctx context.Context, channel string, payload []byte) error
 	Subscribe(ctx context.Context, channel string) error
 	Unsubscribe(ctx context.Context, channel string) error
+	NextID(ctx context.Context, room string) (int64, error)
 	SetHandler(func(channel string, payload []byte))
 	Ping(ctx context.Context) error
 	Close() error
@@ -56,6 +59,10 @@ func (b *RedisBus) Subscribe(ctx context.Context, channel string) error {
 
 func (b *RedisBus) Unsubscribe(ctx context.Context, channel string) error {
 	return b.pubsub.Unsubscribe(ctx, channel)
+}
+
+func (b *RedisBus) NextID(ctx context.Context, room string) (int64, error) {
+	return b.rdb.Incr(ctx, seqKey(room)).Result()
 }
 
 // SetHandler registers the delivery callback and starts the receive goroutine.

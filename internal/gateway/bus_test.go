@@ -84,3 +84,29 @@ func TestRedisBusPing(t *testing.T) {
 		t.Fatalf("ping against live miniredis failed: %v", err)
 	}
 }
+
+func TestRedisBusNextIDIncrementsPerRoom(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mr.Close()
+
+	bus := NewRedisBus(mr.Addr())
+	defer bus.Close()
+	ctx := context.Background()
+
+	id1, err := bus.NextID(ctx, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, _ := bus.NextID(ctx, "x")
+	idY, _ := bus.NextID(ctx, "y")
+
+	if id1 != 1 || id2 != 2 {
+		t.Fatalf("room x ids = %d,%d, want 1,2", id1, id2)
+	}
+	if idY != 1 {
+		t.Fatalf("room y id = %d, want 1", idY)
+	}
+}
