@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go/internal/tracing"
 )
 
 const roomPattern = "room:*"
@@ -19,6 +21,8 @@ type inbound struct {
 	From string `json:"from"`
 	Text string `json:"text"`
 	TS   int64  `json:"ts"`
+
+	Trace string `json:"trace"`
 }
 
 // Worker pattern-subscribes to room:* and forwards decoded chat messages to a
@@ -62,6 +66,12 @@ func (w *Worker) handle(payload string) {
 	if in.Type != "message" {
 		return
 	}
+	ctx := tracing.Extract(context.Background(), in.Trace)
+	_, span := tracing.Tracer().Start(ctx, "chat.consume")
+	w.log.Info("message consumed", "room", in.Room, "id", in.ID,
+		"trace_id", span.SpanContext().TraceID().String())
+	span.End()
+
 	w.batcher.Submit(Message{
 		RoomID:    in.Room,
 		ID:        in.ID,

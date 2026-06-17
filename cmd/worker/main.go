@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go/internal/persistence"
+	"github.com/SMMandora/Real-time_Pub-Sub_Chat_Service_in_Go/internal/tracing"
 )
 
 func getenv(key, def string) string {
@@ -26,6 +27,17 @@ func getenv(key, def string) string {
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	shutdownTracing, err := tracing.Init(context.Background(), "worker")
+	if err != nil {
+		log.Error("tracing init failed", "err", err)
+		os.Exit(1)
+	}
+	defer func() {
+		sctx, scancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = shutdownTracing(sctx)
+		scancel()
+	}()
 
 	redisAddr := getenv("REDIS_ADDR", "localhost:6379")
 	dbURL := getenv("DATABASE_URL", "postgres://chat:chat@localhost:5432/chat?sslmode=disable")
