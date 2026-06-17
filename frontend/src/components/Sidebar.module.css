@@ -1,0 +1,137 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  min-width: 240px;
+  background: var(--bg-rail);
+  border-right: 1px solid var(--border);
+  height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.userBadge {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.dotConnected { background: var(--online); }
+.dotReconnecting { background: var(--away); }
+.dotOffline { background: var(--offline); }
+.dotIdle { background: var(--offline); }
+
+.userName {
+  font-size: var(--text-sm);
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomsSection {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-2) 0;
+}
+
+.sectionLabel {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.roomItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-4);
+  cursor: pointer;
+  border-radius: 0;
+  width: 100%;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.roomItem:hover {
+  background: var(--bg-hover);
+}
+
+.roomItemActive {
+  background: var(--accent-bg);
+}
+
+.roomItemActive .roomName {
+  color: var(--accent);
+}
+
+.roomSigil {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.roomName {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomOnline {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.footer {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.createBtn {
+  width: 100%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.createBtn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.emptyRooms {
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

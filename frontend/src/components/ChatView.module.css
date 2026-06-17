@@ -1,0 +1,255 @@
+.chatView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── RoomHeader ─── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-elev);
+}
+
+.headerName {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.headerOnline {
+  font-size: var(--text-sm);
+  color: var(--online);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.membersToggle {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+
+.membersToggle:hover {
+  background: var(--bg-hover);
+}
+
+/* ── MessageList ─── */
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── DateDivider ─── */
+.dateDivider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+
+.dateLine {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.dateLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 2px var(--sp-2);
+  background: var(--bg-elev);
+  border-radius: var(--radius-full);
+}
+
+/* ── MessageItem ─── */
+.message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: 4px 0;
+  border-radius: var(--radius);
+  transition: background 0.1s;
+}
+
+.message:hover {
+  background: var(--bg-hover);
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.msgBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.msgMeta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: 2px;
+}
+
+.msgFrom {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.msgTime {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.msgText {
+  font-size: var(--text-base);
+  color: var(--text);
+  word-break: break-word;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* ── SystemLine ─── */
+.systemLine {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--sp-1) 0;
+  font-style: italic;
+}
+
+/* ── TypingIndicator ─── */
+.typing {
+  padding: 4px var(--sp-5);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  min-height: 20px;
+  flex-shrink: 0;
+}
+
+.typingDots {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.typingDots span {
+  width: 4px;
+  height: 4px;
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+  animation: bounce 1s infinite;
+}
+
+.typingDots span:nth-child(2) { animation-delay: 0.15s; }
+.typingDots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+
+/* ── Composer ─── */
+.composer {
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-elev);
+}
+
+.composerInner {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+  transition: border-color 0.15s;
+}
+
+.composerInner:focus-within {
+  border-color: var(--border-focus);
+}
+
+.composerInput {
+  flex: 1;
+  background: none;
+  resize: none;
+  font-size: var(--text-base);
+  color: var(--text);
+  line-height: 1.5;
+  max-height: 120px;
+  min-height: 24px;
+  overflow-y: auto;
+}
+
+.composerInput::placeholder {
+  color: var(--text-muted);
+}
+
+.charCounter {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding-bottom: 2px;
+}
+
+.charCounterOver {
+  color: #f87171;
+}
+
+.sendBtn {
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  transition: background 0.15s;
+}
+
+.sendBtn:hover {
+  background: var(--accent-dim);
+}
+
+.sendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
